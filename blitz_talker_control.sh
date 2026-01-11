@@ -26,6 +26,20 @@ stop_daemon() {
     echo "MODE=safe" > .imagine_env
 }
 
+save_prompt_to_user_env() {
+    # Gentle update — only touch DEFAULT_PROMPT line, preserve everything else
+    local temp=$(mktemp)
+    cp .user_env "$temp" 2>/dev/null || touch "$temp"
+
+    if grep -q '^DEFAULT_PROMPT=' "$temp"; then
+        sed -i "s/^DEFAULT_PROMPT=.*/DEFAULT_PROMPT=\"$DEFAULT_PROMPT\"/" "$temp"
+    else
+        echo "DEFAULT_PROMPT=\"$DEFAULT_PROMPT\"" >> "$temp"
+    fi
+
+    mv "$temp" .user_env
+}
+
 stage_targets() {
     stop_daemon
     rm -f live_windows.txt "$TARGET_DIR"/temp_*.gxz 2>/dev/null
