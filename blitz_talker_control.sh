@@ -175,6 +175,7 @@ while true; do
         --field="Wipe windows on stage?":CB "No!Yes" \
         --button="STAGE TARGETS":2 \
         $fire_auto_buttons \
+        --button="SAVE PROMPT":6 \
         --button="EXIT":0)
 
     ret=$?
@@ -203,6 +204,9 @@ while true; do
             ./blitz_talker_daemon.sh &
             ;;
         5) stop_daemon ;;
+        6)  # SAVE PROMPT
+            save_prompt_to_user_env
+            ;;
         *) stop_daemon; exit 0 ;;
     esac
 done
