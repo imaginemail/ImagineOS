@@ -57,6 +57,7 @@ stage_targets() {
     local browser_pids=()
     for i in $(seq 1 "$num"); do
         $BROWSER $BROWSER_FLAGS_HEAD $BROWSER_FLAGS_MIDDLE $BROWSER_FLAGS_TAIL"${urls[$(( (i-1) % ${#urls[@]} ))]}" &
+        sleep 0.5   # give the last one a breath of air before we pile another one on
         browser_pids+=($!)
     done
 
@@ -68,7 +69,7 @@ stage_targets() {
     local ready=0
     until (( ready >= num_to_wait || attempts >= 120 )); do
         ready=$(xdotool search --onlyvisible --pid "${last_pids[@]}" --name "$WINDOW_PATTERN" 2>/dev/null | wc -l)
-        sleep 0.5
+        sleep 0.1
         ((attempts++))
     done
 
@@ -79,7 +80,7 @@ stage_targets() {
     # Stabilization loop for extra safety
     local last_total=0
     local stable_start=0
-    local stable_seconds=5
+    local stable_seconds=3
 
     while true; do
         local total=$(xdotool search --onlyvisible --name "$WINDOW_PATTERN" 2>/dev/null | wc -l)
@@ -94,7 +95,7 @@ stage_targets() {
         fi
 
         last_total=$total
-        sleep 0.5
+        sleep 0.1
     done
 
     local WINDOW_IDS=($(xdotool search --onlyvisible --name "$WINDOW_PATTERN" 2>/dev/null))
