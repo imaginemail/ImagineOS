@@ -9,7 +9,8 @@ ensure_single_instance
 
 source .system_env
 
-require_system_vars     # sanity check
+# sanity check
+require_system_vars
 
 source .imagine_env 2>/dev/null || true
 source .user_env 2>/dev/null || true

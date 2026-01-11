@@ -16,7 +16,8 @@ fi
 # Load values — system defaults first, user overrides last
 source .system_env
 
-require_system_vars     # sanity check
+# sanity check
+require_system_vars
 
 source .user_env 2>/dev/null || true
 source .imagine_env 2>/dev/null || true
