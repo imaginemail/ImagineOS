@@ -11,6 +11,41 @@ ensure_single_instance() {
     sleep 0.2
 }
 
+require_system_vars() {
+    local required=(
+        BROWSER
+        DEFAULT_URL
+        DEFAULT_PROMPT
+        WINDOW_PATTERN
+        DEFAULT_WIDTH
+        DEFAULT_HEIGHT
+        PROMPT_X_FROM_LEFT
+        PROMPT_Y_FROM_BOTTOM
+        TARGET_DIR
+        SHOT_DELAY
+        ROUND_DELAY
+        BURST_COUNT
+        AUTO_ROUNDS
+        PANEL_TITLE
+        SCREENSHOT_DIR
+        MAX_OVERLAP_PERCENT
+        PANEL_DEFAULT_WIDTH
+        PANEL_DEFAULT_HEIGHT
+        PANEL_DEFAULT_X_OFFSET
+        PANEL_DEFAULT_Y_OFFSET
+        BROWSER_FLAGS_HEAD
+        BROWSER_FLAGS_MIDDLE
+        BROWSER_FLAGS_TAIL
+    )
+
+    for var in "${required[@]}"; do
+        if [[ -z "${!var}" ]]; then
+            echo "CRITICAL: Required system variable $var is missing or empty in .system_env" >&2
+            exit 1
+        fi
+    done
+}
+
 screencap() {
     mkdir -p "$SCREENSHOT_DIR"
     local name="${1:-panel_$(date +%s)}"
