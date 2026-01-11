@@ -1,6 +1,11 @@
 # FILE: .system_env - system defaults
+# Organized into logical sections for clarity
 
-########## Aggressive minimal Chromium flags for kiosk-like mode #########
+# =============================================================================
+# BROWSER CONFIGURATION
+# =============================================================================
+
+BROWSER=chromium
 
 BROWSER_FLAGS_HEAD="
  --new-window \
@@ -37,20 +42,36 @@ BROWSER_FLAGS_MIDDLE="
 
 BROWSER_FLAGS_TAIL=" "
 
-BROWSER=chromium
+# =============================================================================
+# DEFAULT CONTENT
+# =============================================================================
 
 DEFAULT_URL="https://grok.com/imagine"
 DEFAULT_PROMPT=" "
+
+# =============================================================================
+# TARGET WINDOW SETTINGS
+# =============================================================================
 
 WINDOW_PATTERN='Imagine - Grok'
 
 DEFAULT_WIDTH=640
 DEFAULT_HEIGHT=500
 
+TARGET_DIR=.imagine_targets
+
+MAX_OVERLAP_PERCENT=25
+
+# =============================================================================
+# PROMPT INJECTION POSITION
+# =============================================================================
+
 PROMPT_X_FROM_LEFT="50%"
 PROMPT_Y_FROM_BOTTOM="130"
 
-TARGET_DIR=.imagine_targets
+# =============================================================================
+# FIRING BEHAVIOR
+# =============================================================================
 
 SHOT_DELAY=0.5
 ROUND_DELAY=10
@@ -59,16 +80,21 @@ BURST_COUNT=4
 SEMI_ROUNDS=1
 AUTO_ROUNDS=20
 
-DEBUG_DAEMON_ECHO=1
+# =============================================================================
+# PANEL SETTINGS
+# =============================================================================
 
 PANEL_TITLE="Blitz Talker"
 
-SCREENSHOT_DIR=".screenshots"
-
-MAX_OVERLAP_PERCENT=25
-
-# Panel defaults — change these to move/size the panel
 PANEL_DEFAULT_WIDTH=500
 PANEL_DEFAULT_HEIGHT=300
-PANEL_DEFAULT_X_OFFSET=10   # pixels from right
-PANEL_DEFAULT_Y_OFFSET=300   # pixels from bottom (clear above taskbar)
+PANEL_DEFAULT_X_OFFSET=10   # pixels from right edge
+PANEL_DEFAULT_Y_OFFSET=300  # pixels from bottom edge (clear above taskbar)
+
+# =============================================================================
+# MISC / DEBUG
+# =============================================================================
+
+DEBUG_DAEMON_ECHO=1
+
+SCREENSHOT_DIR=".screenshots"
