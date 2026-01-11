@@ -153,7 +153,7 @@ stage_targets() {
 while true; do
     source .imagine_env 2>/dev/null || true
 
-    local fire_auto_buttons=""
+    fire_auto_buttons=""
     if [[ "${MODE:-safe}" == "safe" && -s live_windows.txt ]]; then
         fire_auto_buttons="--button=FIRE:3 --button=AUTO:4"
     elif [[ "${MODE:-safe}" != "safe" ]]; then
