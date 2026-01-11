@@ -1,0 +1,74 @@
+# FILE: .system_env - system defaults
+
+########## Aggressive minimal Chromium flags for kiosk-like mode #########
+
+BROWSER_FLAGS_HEAD="
+ --new-window \
+--window-size=640,500 \
+"
+
+BROWSER_FLAGS_MIDDLE="
+--aggressive-cache-discard \
+--animation-duration-scale=0 \
+--disable-features=BackForwardCache,CalculateNativeWinOcclusion,GlobalMediaControls,ImprovedCookieControls,InterestFeedContentSuggestions,PrivacySandboxSettings4,VizDisplayCompositor,Vulkan \
+--disable-background-timer-throttling \
+--disable-backgrounding-occluded-windows \
+--disable-background-mode \
+--disable-breakpad \
+--disable-client-side-phishing-detection \
+--disable-component-update \
+--disable-default-apps \
+--disable-domain-reliability \
+--disable-extensions \
+--disable-hang-monitor \
+--disable-ipc-flooding-protection \
+--disable-plugins \
+--disable-print-preview \
+--disable-renderer-backgrounding \
+--disable-sync \
+--force-color-profile=srgb \
+--no-default-browser-check \
+--no-first-run \
+--no-pings \
+--num-raster-threads=4 \
+--use-gl=desktop \
+--wm-window-animations-disabled \
+"
+
+BROWSER_FLAGS_TAIL=" "
+
+BROWSER=chromium
+
+DEFAULT_URL="https://grok.com/imagine"
+DEFAULT_PROMPT=" "
+
+WINDOW_PATTERN='Imagine - Grok'
+
+DEFAULT_WIDTH=640
+DEFAULT_HEIGHT=500
+
+PROMPT_X_FROM_LEFT="50%"
+PROMPT_Y_FROM_BOTTOM="130"
+
+TARGET_DIR=.imagine_targets
+
+SHOT_DELAY=0.5
+ROUND_DELAY=10
+BURST_COUNT=4
+
+SEMI_ROUNDS=1
+AUTO_ROUNDS=20
+
+DEBUG_DAEMON_ECHO=1
+
+PANEL_TITLE="Blitz Talker"
+
+SCREENSHOT_DIR=".screenshots"
+
+MAX_OVERLAP_PERCENT=25
+
+# Panel defaults — change these to move/size the panel
+PANEL_DEFAULT_WIDTH=500
+PANEL_DEFAULT_HEIGHT=300
+PANEL_DEFAULT_X_OFFSET=10   # pixels from right
+PANEL_DEFAULT_Y_OFFSET=300   # pixels from bottom (clear above taskbar)
