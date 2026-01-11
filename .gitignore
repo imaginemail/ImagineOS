@@ -1,6 +1,9 @@
 .user*
 .imagine*
 .setup_done*
+*.gxz
+*.ixz
+.tmp/
 
 # General editor backups
 *~
