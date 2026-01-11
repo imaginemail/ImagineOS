@@ -1,0 +1,36 @@
+.user*
+.imagine*
+.setup_done*
+
+# General editor backups
+*~
+*.bak
+*.tmp
+*.swp
+*.swo
+*.swn
+
+# Vim
+.*.sw?
+Session.vim
+.netrwhist
+
+# Emacs
+.#*
+*~
+
+# Kate / KWrite (KDE editors)
+*.kate-swp
+*.kate-swp~
+
+# Notepad++ backups
+*.bak
+~*
+
+# MCEdit (Midnight Commander editor)
+*~
+
+# Other common
+*.autosave
+*.orig
+*.rej
