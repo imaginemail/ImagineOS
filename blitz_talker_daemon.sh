@@ -86,5 +86,13 @@ while true; do
         exit 0
     fi
 
+    # Auto mode cap
+    if [[ "$MODE" == "auto" && "$AUTO_ROUNDS" -gt 0 && round >= "$AUTO_ROUNDS" ]]; then
+        set_panel_title "Blitz Talker - COMPLETE (auto)"
+        set_panel_title "$PANEL_TITLE - READY"
+        echo "MODE=safe" > .imagine_env
+        exit 0
+    fi
+
     sleep "$ROUND_DELAY"
 done
