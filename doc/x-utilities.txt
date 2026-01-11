@@ -1,0 +1,118 @@
+
+
+wmctrl section (needs: wmctrl + xdotool or ydotool)
+wmctrl -l                               # list all windows + ids
+wmctrl -a "Firefox"                     # activate window by title substring
+wmctrl -r :ACTIVE: -b add,fullscreen   # toggle fullscreen on active win
+wmctrl -r "Untitled" -e 0,100,100,800,600  # move+resize (x,y,w,h)
+wmctrl -c "Calculator"                  # close window by title
+
+xdotool section (needs: xdotool)
+xdotool getactivewindow                 # print id of focused window
+xdotool search --name "term"            # find window id by title substr
+xdotool windowactivate 12345678         # focus window by id
+xdotool windowfocus --sync 12345678     # focus + wait until done
+xdotool mousemove 300 400               # absolute move mouse to x y
+xdotool mousemove_relative 50 -30       # relative move mouse
+xdotool click 1                         # left click
+xdotool click --clearmodifiers 3        # right click, ignore mods
+xdotool key ctrl+v                      # simulate paste
+xdotool type --delay 12 "hello world"   # slow human-like typing
+xdotool key --clearmodifiers Return     # press Enter, ignore mods
+
+xdotool combined examples
+xdotool search --name "Firefox" windowactivate key ctrl+t
+xdotool mousemove 800 600 click 1 key ctrl+v Return
+xdotool search --sync --name "gedit" windowactivate type "test\n"
+
+ydotool section (needs: ydotool daemon running)
+ydotool mousemove --absolute 500 300
+ydotool mousemove -- 40 -25             # relative move
+ydotool click 0xC1                      # left click (0xC1 = 193)
+ydotool click 0xC2                      # right click
+ydotool key 29:1 30:1 30:0 29:0         # press+release left+right ctrl
+ydotool key 47:1 47:0                   # press+release V key
+ydotool key --key-delay 40 28:1 28:0    # slower Enter
+ydotool mousemove --absolute 400 500 click 0xC1 key 47:1 47:0
+
+window + mouse + paste combined (xdotool style)
+xdotool search --sync --name "input" windowactivate \
+  mousemove 300 200 click 1 key ctrl+v Return
+
+xdotool with --sync safety (recommended for scripts)
+xdotool search --sync --onlyvisible --name "box" windowactivate --sync \
+  mousemove --sync 400 300 click --sync 1 key --sync ctrl+v
+
+ydotool equivalent combined (no --sync, daemon queues)
+ydotool mousemove --absolute 600 400 click 0xC1 key 29:1 47:1 47:0 29:0
+
+########## xdotool cheatsheet - expanded ##########
+
+########## Global options ##########
+# --delay MS          : Delay MS milliseconds between events (key, click, etc.)
+# --repeat N          : Repeat the command N times (with --delay if set)
+# --repeat-delay MS   : Delay between repeats
+# --clearmodifiers    : Release all modifiers (Shift/Ctrl/Alt) before event
+# --window WINID      : Target specific window (see below)
+# --sync              : Wait for command to complete (blocks until done)
+
+########## Mouse commands ##########
+click [--delay MS] [--repeat N] [--window WINID] BTN
+# BTN: 1=left, 2=middle, 3=right, 4=scroll up, 5=scroll down
+# Without --window: Clicks at current mouse position
+# With --window: Requires mouse over window (no relative click)
+
+mousedown [--window WINID] BTN
+mouseup [--window WINID] BTN
+
+mousemove [--window WINID] X Y
+# Without: Absolute screen coords
+# With: Relative to window top-left
+
+mousemove_relative [--clearmodifiers] [--window WINID] X Y
+# Relative move from current position
+
+getmouselocation [--shell]
+# Outputs x:y:screen:window (or shell vars X Y SCREEN WINDOW)
+
+########## Keyboard commands ##########
+key [--delay MS] [--repeat N] [--clearmodifiers] [--window WINID] KEYSEQ
+# KEYSEQ: a, Return, ctrl+c, Alt+F4, etc.
+# With --window: Sends to WINID even unfocused
+# Without: Sends to focused window
+
+keydown KEYSEQ
+keyup KEYSEQ
+
+type [--delay MS] [--window WINID] TEXT
+# Types text (slow, respects --delay between chars)
+
+########## Window commands (require WINID or --window) ##########
+windowactivate [--sync] WINID     # Raise and focus
+windowfocus [--sync] WINID        # Focus without raising
+windowraise WINID
+windowlower WINID
+windowmove WINID X Y
+windowsize [--sync] WINID W H
+windowminimize WINID
+windowmap WINID                   # Unminimize
+windowunmap WINID                 # Iconify/hide
+windowkill WINID                  # Force close
+
+getactivewindow                   # Current focused WINID
+getwindowfocus                    # Same
+
+search --name/--classname/--onlyvisible PATTERN
+# Returns list of WINIDs
+
+########## --sync specifics ##########
+# Blocks until:
+# - windowactivate: Window actually focused
+# - windowsize: Resize complete
+# - mousemove: Mouse moved
+# - search: Results found (if --sync)
+
+########## Tips ##########
+# For reliable clicks: mousemove first, then click (no --window needed)
+# For unfocused input: Use --window $ID with key/type
+# Combine: xdotool --window $ID key --delay 100 ctrl+a Return

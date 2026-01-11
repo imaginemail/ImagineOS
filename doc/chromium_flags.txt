@@ -1,0 +1,102 @@
+Flag,Description,Effect on Profile Popup
+Absolute (hides the popup directly),,
+--noerrdialogs,Suppresses all error dialogs.,Hides the profile error completely — catch-all.
+Likely (prevents the condition causing popup),,
+--user-data-dir=/path,Uses specified profile directory. Fresh dir avoids lock/corruption.,Prevents popup by isolating profile.
+--disable-features=LockProfileCookieDatabase,Disables profile cookie DB lock.,Avoids multi-instance lock errors.
+--incognito,"Starts incognito, no profile load.",Bypasses profile entirely (no login persistence).
+Possible (related to errors/dialogs),,
+--disable-crash-reporter,Disables crash reporting dialogs.,Might suppress related error popups.
+--no-message-box,Suppresses native message boxes.,Could hide some system dialogs.
+Other relevant for automation,,
+--no-first-run,Skips first-run experience.,Avoids initial setup dialogs.
+--disable-infobars,Disables info bars.,"Cleaner UI, no warnings."
+--disable-popup-blocking,Allows popups.,"Not direct, but for web behavior."
+--no-sandbox,Disables sandbox (security risk).,Sometimes avoids startup issues.
+
+
+# --aggressive-cache-discard: Discards cached pages aggressively to reduce memory usage
+# --animation-duration-scale=0: Disables all UI animations (like tab open/close)
+# --disable-features=BackForwardCache: Prevents caching of pages during navigation, improving consistency
+# --disable-features=CalculateNativeWinOcclusion: Disables occlusion tracking that can throttle background windows
+# --disable-features=GlobalMediaControls: Hides media control UI that can cause delays
+# --disable-features=ImprovedCookieControls: Disables enhanced cookie UI that may slow startup
+# --disable-features=InterestFeedContentSuggestions: Disables NTP feed suggestions
+# --disable-features=PrivacySandboxSettings4: Disables privacy sandbox prompts
+# --disable-features=VizDisplayCompositor: Avoids display compositor initialization delays
+# --disable-features=Vulkan: Disables experimental Vulkan graphics backend
+# --disable-background-networking: Stops background network activity
+# --disable-background-timer-throttling: Prevents JavaScript timers from being throttled in background tabs
+# --disable-backgrounding-occluded-windows: Keeps windows active even when covered
+# --disable-background-mode: Disables background mode to reduce process overhead
+# --disable-breakpad: Disables crash reporting for faster startup
+# --disable-client-side-phishing-detection: Removes phishing detection checks
+# --disable-component-update: Prevents background updates of components
+# --disable-default-apps: Stops installation of default apps
+# --disable-domain-reliability: Disables domain reliability monitoring
+# --disable-extensions: Disables all extensions
+# --disable-gpu: Disables GPU hardware acceleration
+# --disable-gpu-compositing: Forces CPU compositing
+# --disable-gpu-rasterization: Disables GPU rasterization
+# --disable-gpu-vsync: Disables GPU vsync to reduce rendering delay
+# --disable-hang-monitor: Suppresses hang detection dialogs
+# --disable-ipc-flooding-protection: Allows rapid IPC messages, critical for launching many windows
+# --disable-plugins: Disables plugins
+# --disable-preconnect: Disables preconnect to save network overhead
+# --disable-print-preview: Disables print preview
+# --disable-renderer-backgrounding: Keeps renderer processes at full priority
+# --disable-sync: Disables Chrome sync
+# --disable-web-security: Disables web security (use cautiously)
+# --disable-webgl: Disables WebGL
+# --dns-prefetch-disable: Disables DNS prefetching
+# --force-color-profile=srgb: Forces sRGB color profile to reduce GPU conversion
+# --mute-audio: Mutes audio output
+# --no-default-browser-check: Skips default browser check
+# --no-first-run: Skips first-run wizard
+# --no-pings: Disables hyperlink auditing pings
+# --num-raster-threads=4: Uses 4 threads for rasterization to improve performance
+# --process-per-site: Groups pages by site into processes
+# --use-gl=desktop: Uses desktop OpenGL instead of SwiftShader
+# --wm-window-animations-disabled: Disables X11 window manager animations
+# --window-size=500,500: Sets initial window size
+
+chromium \
+--aggressive-cache-discard \
+--animation-duration-scale=0 \
+--disable-features=BackForwardCache,CalculateNativeWinOcclusion,GlobalMediaControls,ImprovedCookieControls,InterestFeedContentSuggestions,PrivacySandboxSettings4,VizDisplayCompositor,Vulkan \
+--disable-background-timer-throttling \
+--disable-backgrounding-occluded-windows \
+--disable-background-mode \
+--disable-breakpad \
+--disable-client-side-phishing-detection \
+--disable-component-update \
+--disable-default-apps \
+--disable-domain-reliability \
+--disable-extensions \
+--disable-hang-monitor \
+--disable-ipc-flooding-protection \
+--disable-plugins \
+--disable-print-preview \
+--disable-renderer-backgrounding \
+--disable-sync \
+--force-color-profile=srgb \
+--no-default-browser-check \
+--no-first-run \
+--no-pings \
+--num-raster-threads=4 \
+--use-gl=desktop \
+--wm-window-animations-disabled \
+
+
+NO!
+--disable-background-networking         # Blocks background fetches; pages stay cold until activated
+--disable-preconnect                    # No warm connections to origins; adds network delay
+--dns-prefetch-disable                  # No DNS warmup; extra round-trip on load
+--disable-gpu                           # Forces CPU rendering; much slower compositing
+--disable-gpu-compositing               # Same — kills hardware acceleration
+--disable-gpu-rasterization             # Same — software raster slow
+--disable-gpu-vsync                     # Same — no hardware sync benefits
+--disable-webgl                         # Minor, but unnecessary unless site needs it
+--disable-web-security                  # only useful with user data dir
+--no-sandbox                            # Disables sandboxing (use only in secure environments)
+--process-per-site                      # tries to group tasks into fewer processes
