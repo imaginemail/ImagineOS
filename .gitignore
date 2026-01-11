@@ -1,9 +1,12 @@
+# These are our own working files the system uses
+
 .user*
 .imagine*
 .setup_done*
 *.gxz
 *.ixz
 .tmp/
+live_windows.txt
 
 # General editor backups
 *~
