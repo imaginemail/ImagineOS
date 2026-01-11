@@ -177,9 +177,11 @@ while true; do
     STAGE_COUNT=$(echo "$yad_output" | cut -d'|' -f4 | cut -d'.' -f1)
     WIPE_ON_STAGE=$(echo "$yad_output" | cut -d'|' -f5)
 
+    # Auto-save prompt on every exit path — blank writes blank, bug visible
+    save_prompt_to_user_env
+
     case $ret in
         0)  # EXIT
-            save_prompt_to_user_env
             stop_daemon
             if yad --question --title="$PANEL_TITLE" --text="Kill all browser windows on exit?" --button=Yes:0 --button=No:1; then
                 pkill "$BROWSER" 2>/dev/null
@@ -188,19 +190,14 @@ while true; do
             ;;
         2) stage_targets ;;
         3)  # FIRE (semi)
-            save_prompt_to_user_env
             echo "MODE=semi" > .imagine_env
             ./blitz_talker_daemon.sh &
             ;;
         4)  # AUTO
-            save_prompt_to_user_env
             echo "MODE=auto" > .imagine_env
             ./blitz_talker_daemon.sh &
             ;;
         5) stop_daemon ;;
-        6)  # SAVE PROMPT
-            save_prompt_to_user_env
-            ;;
         *) stop_daemon; exit 0 ;;
     esac
 done

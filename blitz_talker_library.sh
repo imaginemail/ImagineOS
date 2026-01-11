@@ -75,13 +75,23 @@ save_prompt_to_user_env() {
     local temp=$(mktemp)
     cp .user_env "$temp" 2>/dev/null || touch "$temp"
 
-    if grep -q '^DEFAULT_PROMPT=' "$temp"; then
-        sed -i "s/^DEFAULT_PROMPT=.*/DEFAULT_PROMPT=\"$DEFAULT_PROMPT\"/" "$temp"
-    else
-        echo "DEFAULT_PROMPT=\"$DEFAULT_PROMPT\"" >> "$temp"
-    fi
+    # Safely comment out any previous DEFAULT_PROMPT assignment lines
+    sed -i 's/^\s*DEFAULT_PROMPT=/# &/' "$temp"
+
+    {
+        echo ""
+        cat <<'OPEN_BLOCK'
+DEFAULT_PROMPT=$(cat <<'EOF_PROMPT'
+OPEN_BLOCK
+        printf '%s\n' "$DEFAULT_PROMPT"
+        cat <<'CLOSE_BLOCK'
+EOF_PROMPT
+)
+CLOSE_BLOCK
+    } >> "$temp"
 
     mv "$temp" .user_env
+    #chmod 600 .user_env 2>/dev/null || true
 }
 
 silence() {
