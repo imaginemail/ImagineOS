@@ -170,8 +170,8 @@ while true; do
         --geometry="$use_geom" --title="$PANEL_TITLE" --on-top \
         --field="URL":TXT "$DEFAULT_URL" \
         --field="Prompt":TXT "$DEFAULT_PROMPT" \
-        --field="Shots per window (burst)":NUM "$BURST_COUNT!1..20!1" \
-        --field="Number of windows":NUM "$STAGE_COUNT!1..48!1" \
+        --field="Shots per window (burst)":NUM "${BURST_COUNT:-4}!1..20!1" \
+        --field="Number of windows":NUM "${STAGE_COUNT:-24}!1..48!1" \
         --field="Wipe windows on stage?":CB "No!Yes" \
         --button="STAGE TARGETS":2 \
         $fire_auto_buttons \
