@@ -1,6 +1,6 @@
 #!/bin/bash
 # blitz_talker_control.sh - Persistent Yad dashboard
-# Updated: 2026-01-10
+# Updated: 2026-01-11
 
 [[ -f .system_env ]] || { echo "ERROR: Missing .system_env"; exit 1; }
 source blitz_talker_library.sh
@@ -24,20 +24,6 @@ echo "MODE=safe" > .imagine_env
 stop_daemon() {
     pkill -9 -f blitz_talker_daemon.sh 2>/dev/null
     echo "MODE=safe" > .imagine_env
-}
-
-save_prompt_to_user_env() {
-    # Gentle update — only touch DEFAULT_PROMPT line, preserve everything else
-    local temp=$(mktemp)
-    cp .user_env "$temp" 2>/dev/null || touch "$temp"
-
-    if grep -q '^DEFAULT_PROMPT=' "$temp"; then
-        sed -i "s/^DEFAULT_PROMPT=.*/DEFAULT_PROMPT=\"$DEFAULT_PROMPT\"/" "$temp"
-    else
-        echo "DEFAULT_PROMPT=\"$DEFAULT_PROMPT\"" >> "$temp"
-    fi
-
-    mv "$temp" .user_env
 }
 
 stage_targets() {
@@ -189,6 +175,7 @@ while true; do
 
     case $ret in
         0)  # EXIT
+            save_prompt_to_user_env
             stop_daemon
             if yad --question --title="$PANEL_TITLE" --text="Kill all browser windows on exit?" --button=Yes:0 --button=No:1; then
                 pkill "$BROWSER" 2>/dev/null
@@ -197,10 +184,12 @@ while true; do
             ;;
         2) stage_targets ;;
         3)  # FIRE (semi)
+            save_prompt_to_user_env
             echo "MODE=semi" > .imagine_env
             ./blitz_talker_daemon.sh &
             ;;
         4)  # AUTO
+            save_prompt_to_user_env
             echo "MODE=auto" > .imagine_env
             ./blitz_talker_daemon.sh &
             ;;

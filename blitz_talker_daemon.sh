@@ -1,6 +1,6 @@
 #!/bin/bash
 # blitz_talker_daemon.sh - Automate firing on staged targets
-# Updated: 2026-01-10
+# Updated: 2026-01-11
 
 [[ -f .system_env ]] || { echo "ERROR: Missing .system_env"; exit 1; }
 source blitz_talker_library.sh

@@ -35,6 +35,20 @@ calc_prompt_click() {
     CLICK_Y=$(( height - pixels_from_bottom ))
 }
 
+save_prompt_to_user_env() {
+    # Gentle update — only touch DEFAULT_PROMPT line, preserve everything else
+    local temp=$(mktemp)
+    cp .user_env "$temp" 2>/dev/null || touch "$temp"
+
+    if grep -q '^DEFAULT_PROMPT=' "$temp"; then
+        sed -i "s/^DEFAULT_PROMPT=.*/DEFAULT_PROMPT=\"$DEFAULT_PROMPT\"/" "$temp"
+    else
+        echo "DEFAULT_PROMPT=\"$DEFAULT_PROMPT\"" >> "$temp"
+    fi
+
+    mv "$temp" .user_env
+}
+
 silence() {
     pkill -9 -f blitz_talker_daemon.sh 2>/dev/null
     xdotool search --onlyvisible --name "$WINDOW_PATTERN" windowkill %@ 2>/dev/null
