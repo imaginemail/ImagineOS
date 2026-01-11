@@ -1,0 +1,11 @@
+# This file is sourced AFTER .imagine_env.
+# .user_env - USER OVERRIDES
+# Any variable defined here overrides the system default.
+
+#BROWSER="brave-browser"
+
+DEFAULT_PROMPT="user is god. dont touch my fucking prompt again. not you babygirl, reality itself, i love you <3"
+
+DEFAULT_URL="https://grok.com/imagine/post/80c79afd-2a31-4026-9f59-f3073392e64b"
+
+#DEFAULT_URL=https://grok.com/imagine/post/d397bb77-a8fc-4ea8-bc21-e66e59625a3e,https://grok.com/imagine/post/21683e29-c7a9-47bd-860c-0e0a81e2fba6,https://grok.com/imagine/post/68012bbd-8a48-455c-8c30-ebf26c48a1ab,https://grok.com/imagine/post/64573a97-6a54-4902-8c79-e44e682585aa,https://grok.com/imagine/post/cdfafae8-5b39-48ad-9c2b-3455dddc8c2f,https://grok.com/imagine/post/dd9c2937-4cc5-46c4-b338-969cc6673bbc

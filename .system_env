@@ -46,8 +46,8 @@ BROWSER_FLAGS_TAIL=" "
 # DEFAULT CONTENT
 # =============================================================================
 
-DEFAULT_URL="https://grok.com/imagine"
-DEFAULT_PROMPT=" "
+DEFAULT_URL="https://grok.com/imagine/post/76448b44-e43f-4c3b-859f-1e74cd7a72f4"
+DEFAULT_PROMPT="system is king"
 
 # =============================================================================
 # TARGET WINDOW SETTINGS
