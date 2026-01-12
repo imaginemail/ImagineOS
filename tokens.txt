@@ -1,0 +1,34 @@
+==Stage==
+Small: Base image creation
+Medium: Image refinement
+Large: Video animation
+
+==Body== #stage: small medium
+figure
+
+==Motion== #stage: large
+pulse
+
+==Texture== #stage: small medium large
+smooth
+
+==Light== #stage: small medium
+ambient
+
+==Voice== #stage: large
+breathiness: slider 0-100 default 50
+
+==Intimacy== #stage: medium large
+close
+
+==Camera== #stage: small medium large
+static
+
+==Atmosphere== #stage: large
+warm
+
+==Space== #stage: small medium
+dim
+
+==Negative== #stage: all
+blurry
