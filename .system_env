@@ -86,7 +86,7 @@ AUTO_ROUNDS=20
 
 PANEL_TITLE="Blitz Talker"
 
-PANEL_DEFAULT_WIDTH=500
+PANEL_DEFAULT_WIDTH=300
 PANEL_DEFAULT_HEIGHT=300
 PANEL_DEFAULT_X_OFFSET=10   # pixels from right edge
 PANEL_DEFAULT_Y_OFFSET=300  # pixels from bottom edge (clear above taskbar)
