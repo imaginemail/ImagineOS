@@ -24,7 +24,7 @@ set_panel_title "Blitz Talker - STARTING"
 
 while true; do
 	load_environment
-    source .imagine_env 2>/dev/null || true
+	get_urls
 
     if [[ "$MODE" == "safe" ]]; then
         set_panel_title "Blitz Talker - PAUSED"
@@ -68,6 +68,9 @@ while true; do
 
         xdotool mousemove $saved_x $saved_y
 
+        current_url="${urls[$(( i % ${#urls[@]} ))]}"
+		write_to_gxz
+
         ((total_shots += $BURST_COUNT))
 
         set_panel_title "Blitz Talker - Round $round Shots $total_shots FIRING"
@@ -78,16 +81,17 @@ while true; do
     if [[ "$MODE" == "semi" ]]; then
         set_panel_title "Blitz Talker - COMPLETE (semi)"
         set_panel_title "$PANEL_TITLE - READY"
-        echo "MODE=safe" > .imagine_env
+        update_key_value .imagine_env MODE safe
         exit 0
     fi
 
-# Auto mode cap
-if [[ "$MODE" == "auto" ]] && (( AUTO_ROUNDS > 0 && round >= AUTO_ROUNDS )); then
-    set_panel_title "Blitz Talker - COMPLETE (auto)"
-    set_panel_title "$PANEL_TITLE - READY"
-    echo "MODE=safe" > .imagine_env
-    exit 0
-fi
+    # Auto mode cap
+    if [[ "$MODE" == "auto" ]] && (( AUTO_ROUNDS > 0 && round >= AUTO_ROUNDS )); then
+        set_panel_title "Blitz Talker - COMPLETE (auto)"
+        set_panel_title "$PANEL_TITLE - READY"
+        update_key_value .imagine_env MODE safe
+        exit 0
+    fi
+
     sleep "$ROUND_DELAY"
 done

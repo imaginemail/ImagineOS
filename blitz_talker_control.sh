@@ -1,6 +1,6 @@
 #!/bin/bash
-# blitz_talker_control.sh - Persistent Yad dashboard
-# Updated: 2026-01-11
+# blitz_talker_control.sh - Dual YAD: Persistent display + respawning control panel
+# Updated: 2026-01-14
 
 [[ -f .system_env ]] || { echo "ERROR: Missing .system_env"; exit 1; }
 source blitz_talker_library.sh
@@ -11,70 +11,79 @@ ensure_single_instance
 if [ ! -f .setup_done ]; then
     rm -f .imagine_env
     touch .setup_done
+    touch .imagine_env
 fi
 
 load_environment
-# Load values — system defaults first, user overrides last
-source .system_env
 
-# sanity check
-require_system_vars
+# Enforce safe start.
+update_key_value .imagine_env MODE safe
 
-source .user_env 2>/dev/null || true
-source .imagine_env 2>/dev/null || true
+PIPE="/tmp/blitz_display_pipe_$$"
+mkfifo "$PIPE"
 
-# Enforce safe start
-echo "MODE=safe" > .imagine_env
+refresh_display() {
+	load_environment
 
-stop_daemon() {
-    pkill -9 -f blitz_talker_daemon.sh 2>/dev/null
-    echo "MODE=safe" > .imagine_env
+    targets=$(xdotool search --onlyvisible --name "$WINDOW_PATTERN" 2>/dev/null | wc -l)
+    daemon=$(pgrep -f blitz_talker_daemon.sh >/dev/null && echo "Running" || echo "Stopped")
+    mode=${MODE:-safe}
+    prompt=${DEFAULT_PROMPT:-system is king}
+    burst=${BURST_COUNT:-4}
+    urls=${DEFAULT_URL:-none}
+
+    cat <<EOF
+<big>$DISPLAY_TITLE</big>
+
+Mode:       $mode
+Targets:    $targets
+Daemon:     $daemon
+Burst:      $burst
+Prompt:     $prompt
+URLs:       $urls
+
+$(date)
+EOF
 }
 
+# Persistent display (initial content + live updates)
+{
+    refresh_display
+    cat
+} > "$PIPE" &
+yad --text-info --listen --title="$DISPLAY_TITLE" \
+    --geometry=$(auto_position_panel DISPLAY) \
+    --no-buttons --always-on-top --margins=10 --fontname="Monospace 10" \
+    < "$PIPE" &
+DISPLAY_PID=$!
+
 stage_targets() {
-    stop_daemon
-    rm -f live_windows.txt "$TARGET_DIR"/temp_*.gxz 2>/dev/null
-
-    if [[ "$WIPE_ON_STAGE" == "Yes" ]]; then
-        pkill "$BROWSER" 2>/dev/null
-        sleep 1
+    safemode
+    get_urls
+    local num="${STAGE_COUNT:-24}"
+    if (( ${#urls[@]} == 0 )); then
+        yad --error --title="Stage Targets" --text="No URLs provided." --button=OK:0
+        return
     fi
-
-    local num="$STAGE_COUNT"
-
-    local urls=("$DEFAULT_URL")
-
-    mkdir -p "$TARGET_DIR"
     local browser_pids=()
     for i in $(seq 1 "$num"); do
         $BROWSER $BROWSER_FLAGS_HEAD $BROWSER_FLAGS_MIDDLE $BROWSER_FLAGS_TAIL"${urls[$(( (i-1) % ${#urls[@]} ))]}" &
-        sleep 0.5   # give the last one a breath of air before we pile another one on
+        sleep 1.5
         browser_pids+=($!)
     done
-
-    # Wait for the last 4 launched browsers to have windows with the pattern
-    local num_to_wait=$(( num < 4 ? num : 4 ))
-    local last_pids=("${browser_pids[@]: -$num_to_wait}")
-
-    local attempts=0
-    local ready=0
-    until (( ready >= num_to_wait || attempts >= 120 )); do
-        ready=$(xdotool search --onlyvisible --pid "${last_pids[@]}" --name "$WINDOW_PATTERN" 2>/dev/null | wc -l)
-        sleep 0.1
-        ((attempts++))
+    mapfile -t WINDOW_IDS < <(for pid in "${browser_pids[@]}"; do xdotool search --onlyvisible --pid "$pid" 2>/dev/null; done | sort -u)
+    (( ${#WINDOW_IDS[@]} == 0 )) && { echo "No windows found"; exit 1; }
+    for window in "${WINDOW_IDS[@]}"; do
+        xdotool windowactivate "$window"
+        sleep 0.5
     done
-
-    if (( ready < num_to_wait )); then
-        echo "Warning: Only $ready of last $num_to_wait windows ready" >&2
-    fi
-
-    # Stabilization loop for extra safety
+    write_to_gxz
     local last_total=0
     local stable_start=0
     local stable_seconds=3
 
     while true; do
-        local total=$(xdotool search --onlyvisible --name "$WINDOW_PATTERN" 2>/dev/null | wc -l)
+        local total=$(for pid in "${browser_pids[@]}"; do xdotool search --onlyvisible --pid "$pid" 2>/dev/null; done | wc -l)
 
         if (( total == last_total )); then
             [[ $stable_start == 0 ]] && stable_start=$(date +%s)
@@ -88,10 +97,7 @@ stage_targets() {
         last_total=$total
         sleep 0.1
     done
-
-    local WINDOW_IDS=($(xdotool search --onlyvisible --name "$WINDOW_PATTERN" 2>/dev/null))
-
-    local SCREEN_W SCREEN_H
+    mapfile -t WINDOW_IDS < <(for pid in "${browser_pids[@]}"; do xdotool search --onlyvisible --pid "$pid" 2>/dev/null; done | sort -u)
     read SCREEN_W SCREEN_H < <(xdotool getdisplaygeometry)
     local margin=10
     local max_overlap_percent=${MAX_OVERLAP_PERCENT:-25}
@@ -143,62 +149,36 @@ stage_targets() {
 # Persistent Yad panel
 while true; do
     source .imagine_env 2>/dev/null || true
+    source .user_env 2>/dev/null || true
 
-    fire_auto_buttons=""
-    if [[ "${MODE:-safe}" == "safe" && -s live_windows.txt ]]; then
-        fire_auto_buttons="--button=FIRE:3 --button=AUTO:4"
-    elif [[ "${MODE:-safe}" != "safe" ]]; then
-        fire_auto_buttons="--button=STOP:5"
-    fi
+    targets=$(xdotool search --onlyvisible --name "$WINDOW_PATTERN" 2>/dev/null | wc -l)
 
-    read SCREEN_W SCREEN_H < <(xdotool getdisplaygeometry)
-    calc_x=$(( SCREEN_W - PANEL_DEFAULT_WIDTH - PANEL_DEFAULT_X_OFFSET ))
-    calc_y=$(( SCREEN_H - PANEL_DEFAULT_HEIGHT - PANEL_DEFAULT_Y_OFFSET ))
-    (( calc_x < 0 )) && calc_x=0
-    (( calc_y < 0 )) && calc_y=0
-    use_geom="${PANEL_DEFAULT_WIDTH}x${PANEL_DEFAULT_HEIGHT}+$calc_x+$calc_y"
+    buttons=(--button="Edit Prompt":10 --button="Edit URLs":11 --button="Quit":1)
 
-    yad_output=$(yad --form --width="$PANEL_DEFAULT_WIDTH" --height="$PANEL_DEFAULT_HEIGHT" \
-        --geometry="$use_geom" --title="$PANEL_TITLE" --on-top \
-        --field="URL":TXT "$DEFAULT_URL" \
-        --field="Prompt":TXT "$DEFAULT_PROMPT" \
-        --field="Shots per window (burst)":NUM "${BURST_COUNT:-4}!1..20!1" \
-        --field="Number of windows":NUM "${STAGE_COUNT:-24}!1..48!1" \
-        --field="Wipe windows on stage?":CB "No!Yes" \
-        --button="STAGE TARGETS":2 \
-        $fire_auto_buttons \
-        --button="SAVE PROMPT":6 \
-        --button="EXIT":0)
+    (( targets == 0 )) && buttons+=(--button="Stage Targets":20) || buttons+=(--button="Safe Mode":30 --button="Start Auto":40)
+
+    yad --form --title="$CONTROL_TITLE" \
+        --geometry=$(auto_position_panel CONTROL) \
+        --always-on-top --text="<big>Control Panel</big>" \
+        "${buttons[@]}" >/dev/null
 
     ret=$?
 
-    DEFAULT_URL=$(echo "$yad_output" | cut -d'|' -f1)
-    DEFAULT_PROMPT=$(echo "$yad_output" | cut -d'|' -f2)
-    BURST_COUNT=$(echo "$yad_output" | cut -d'|' -f3 | cut -d'.' -f1)
-    STAGE_COUNT=$(echo "$yad_output" | cut -d'|' -f4 | cut -d'.' -f1)
-    WIPE_ON_STAGE=$(echo "$yad_output" | cut -d'|' -f5)
-
-    # Auto-save prompt on every exit path — blank writes blank, bug visible
-    save_prompt_to_user_env
-
     case $ret in
-        0)  # EXIT
-            stop_daemon
-            if yad --question --title="$PANEL_TITLE" --text="Kill all browser windows on exit?" --button=Yes:0 --button=No:1; then
-                pkill "$BROWSER" 2>/dev/null
-            fi
-            exit 0
-            ;;
-        2) stage_targets ;;
-        3)  # FIRE (semi)
-            echo "MODE=semi" > .imagine_env
-            ./blitz_talker_daemon.sh &
-            ;;
-        4)  # AUTO
-            echo "MODE=auto" > .imagine_env
-            ./blitz_talker_daemon.sh &
-            ;;
-        5) stop_daemon ;;
-        *) stop_daemon; exit 0 ;;
+        1)  kill $DISPLAY_PID 2>/dev/null; rm -f "$PIPE"; exit 0 ;;
+        10) new=$(yad --entry --title="Edit Prompt" --text="New prompt:" --entry-text="${DEFAULT_PROMPT:-}")
+            [[ -n "$new" ]] && update_key_value .user_env DEFAULT_PROMPT "$new" ;;
+        11) url_val=$(grep '^DEFAULT_URL=' .user_env 2>/dev/null | cut -d'"' -f2 || echo "")
+            content="$url_val"
+            [[ -f "$url_val" ]] && content=$(cat "$url_val")
+            new=$(yad --text-info --editable --width=600 --height=400 --title="Edit URLs" --text="$content")
+            [[ -n "$new" ]] && { [[ -f "$url_val" ]] && printf "%s\n" "$new" > "$url_val" || update_key_value .user_env DEFAULT_URL "$new"; } ;;
+        20) stage_targets ;;
+        30) safemode ;;
+        40) update_key_value .imagine_env MODE auto; ./blitz_talker_daemon.sh & ;;
+        *)  continue ;;
     esac
+
+    refresh_display > "$PIPE"
+    sleep 0.1
 done
