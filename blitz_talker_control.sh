@@ -13,6 +13,7 @@ if [ ! -f .setup_done ]; then
     touch .setup_done
 fi
 
+load_environment
 # Load values — system defaults first, user overrides last
 source .system_env
 

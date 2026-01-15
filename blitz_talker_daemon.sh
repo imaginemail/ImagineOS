@@ -1,19 +1,10 @@
 #!/bin/bash
 # blitz_talker_daemon.sh - Automate firing on staged targets
-# Updated: 2026-01-11
+# Updated: 2026-01-14
 
 [[ -f .system_env ]] || { echo "ERROR: Missing .system_env"; exit 1; }
-source blitz_talker_library.sh
 
-ensure_single_instance
-
-source .system_env
-
-# sanity check
-require_system_vars
-
-source .imagine_env 2>/dev/null || true
-source .user_env 2>/dev/null || true
+load_environment
 
 MODE="${MODE:-safe}"
 
@@ -32,6 +23,7 @@ total_shots=0
 set_panel_title "Blitz Talker - STARTING"
 
 while true; do
+	load_environment
     source .imagine_env 2>/dev/null || true
 
     if [[ "$MODE" == "safe" ]]; then

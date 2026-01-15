@@ -53,6 +53,8 @@ DEFAULT_PROMPT="system is king"
 # TARGET WINDOW SETTINGS
 # =============================================================================
 
+CLEAR_TARGETS=Y
+
 WINDOW_PATTERN='Imagine - Grok'
 
 DEFAULT_WIDTH=640
@@ -73,23 +75,28 @@ PROMPT_Y_FROM_BOTTOM="130"
 # FIRING BEHAVIOR
 # =============================================================================
 
+MODE=safe
 SHOT_DELAY=0.5
 ROUND_DELAY=10
 BURST_COUNT=4
-
-SEMI_ROUNDS=1
-AUTO_ROUNDS=20
+ROUND_COUNT=1
 
 # =============================================================================
 # PANEL SETTINGS
 # =============================================================================
 
-PANEL_TITLE="Blitz Talker"
+# Two panels - control and display
+CONTROL_TITLE="Blitz Talker"
+CONTROL_DEFAULT_WIDTH=500
+CONTROL_DEFAULT_HEIGHT=100
+CONTROL_DEFAULT_X_OFFSET=10   # pixels from right edge
+CONTROL_DEFAULT_Y_OFFSET=200  # pixels from bottom edge (clear above taskbar)
 
-PANEL_DEFAULT_WIDTH=300
-PANEL_DEFAULT_HEIGHT=300
-PANEL_DEFAULT_X_OFFSET=10   # pixels from right edge
-PANEL_DEFAULT_Y_OFFSET=300  # pixels from bottom edge (clear above taskbar)
+DISPLAY_TITLE="Blitz Listener"
+DISPLAY_DEFAULT_WIDTH=500
+DISPLAY_DEFAULT_HEIGHT=200
+DISPLAY_DEFAULT_X_OFFSET=10   # pixels from right edge
+DISPLAY_DEFAULT_Y_OFFSET=340  # pixels from bottom edge (clear above taskbar)
 
 # =============================================================================
 # MISC / DEBUG
