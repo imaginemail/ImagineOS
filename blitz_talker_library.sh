@@ -1,4 +1,6 @@
-# FILE: blitz_talker_library.sh - helper functions (updated with update_key_value)
+# blitz_talker_library.sh - helper functions
+# Updated: 2026-01-14
+
 
 load_environment()	{
     # Never change this load order, never omit a source.
