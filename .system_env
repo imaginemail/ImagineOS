@@ -1,17 +1,13 @@
 # .system_env - system defaults
-# Updated: 2026-01-14
-
+# Updated: 2026-01-17
 # =============================================================================
 # BROWSER CONFIGURATION
 # =============================================================================
-
 BROWSER=chromium
-
 BROWSER_FLAGS_HEAD="
- --new-window \
+--new-window \
 --window-size=640,500 \
 "
-
 BROWSER_FLAGS_MIDDLE="
 --aggressive-cache-discard \
 --animation-duration-scale=0 \
@@ -39,69 +35,42 @@ BROWSER_FLAGS_MIDDLE="
 --use-gl=desktop \
 --wm-window-animations-disabled \
 "
-
 BROWSER_FLAGS_TAIL=" "
-
 # =============================================================================
 # DEFAULT CONTENT
 # =============================================================================
-
 DEFAULT_URL="https://grok.com/imagine/post/76448b44-e43f-4c3b-859f-1e74cd7a72f4"
 DEFAULT_PROMPT="system is king"
-
 # =============================================================================
 # TARGET WINDOW SETTINGS
 # =============================================================================
-
-CLEAR_TARGETS=Y
-
 WINDOW_PATTERN='Imagine - Grok'
-
 DEFAULT_WIDTH=640
 DEFAULT_HEIGHT=500
-
 TARGET_DIR=.imagine_targets
-
 MAX_OVERLAP_PERCENT=25
-
 # =============================================================================
 # PROMPT INJECTION POSITION
 # =============================================================================
-
 PROMPT_X_FROM_LEFT="50%"
 PROMPT_Y_FROM_BOTTOM="130"
-
 # =============================================================================
 # FIRING BEHAVIOR
 # =============================================================================
-
-MODE=safe
 SHOT_DELAY=0.5
 ROUND_DELAY=10
 BURST_COUNT=4
-ROUND_COUNT=1
-
+FIRE_COUNT=1
 # =============================================================================
 # PANEL SETTINGS
 # =============================================================================
-
-# Two panels - control and display
-CONTROL_TITLE="Blitz Talker"
-CONTROL_DEFAULT_WIDTH=500
-CONTROL_DEFAULT_HEIGHT=100
-CONTROL_DEFAULT_X_OFFSET=10   # pixels from right edge
-CONTROL_DEFAULT_Y_OFFSET=200  # pixels from bottom edge (clear above taskbar)
-
-DISPLAY_TITLE="Blitz Listener"
-DISPLAY_DEFAULT_WIDTH=500
-DISPLAY_DEFAULT_HEIGHT=200
-DISPLAY_DEFAULT_X_OFFSET=10   # pixels from right edge
-DISPLAY_DEFAULT_Y_OFFSET=340  # pixels from bottom edge (clear above taskbar)
-
+PANEL_DEFAULT_TITLE=".Blitz Talker."
+PANEL_DEFAULT_WIDTH=500
+PANEL_DEFAULT_HEIGHT=100
+PANEL_DEFAULT_X_OFFSET=10
+PANEL_DEFAULT_Y_OFFSET=200
 # =============================================================================
 # MISC / DEBUG
 # =============================================================================
-
 DEBUG_DAEMON_ECHO=1
-
 SCREENSHOT_DIR=".screenshots"

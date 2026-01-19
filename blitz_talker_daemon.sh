@@ -1,93 +1,83 @@
 #!/bin/bash
 # blitz_talker_daemon.sh - Automate firing on staged targets
-# Updated: 2026-01-14
+# Updated: 2026-01-17
 
 [[ -f .system_env ]] || { echo "ERROR: Missing .system_env"; exit 1; }
 
+source blitz_talker_library.sh
 load_environment
 
-MODE="${MODE:-safe}"
-
 [[ -s live_windows.txt ]] || { echo "No targets"; exit 1; }
-mapfile -t WINDOW_IDS < live_windows.txt
+
+bring_panel_front() {
+    wmctrl -a "$PANEL_DEFAULT_TITLE" 2>/dev/null || true
+}
 
 set_panel_title() {
     local new_title="$1"
-    wmctrl -r "$PANEL_TITLE" -T "$new_title" 2>/dev/null || true
+    wmctrl -r "$PANEL_DEFAULT_TITLE" -T "$new_title" 2>/dev/null || true
+    bring_panel_front
 }
 
-set_panel_title "$PANEL_TITLE - READY"
-
-round=0
 total_shots=0
-set_panel_title "Blitz Talker - STARTING"
 
-while true; do
-	load_environment
+fire_count="${FIRE_COUNT:-1}"
+
+for (( round=1; round <= fire_count; round++ )); do
+
+    # Reload runtime changes
     source .imagine_env 2>/dev/null || true
+    source .user_env 2>/dev/null || true
 
-    if [[ "$MODE" == "safe" ]]; then
-        set_panel_title "Blitz Talker - PAUSED"
-        while [[ "$MODE" == "safe" ]]; do
-            sleep 1
-            source .imagine_env 2>/dev/null || true
-        done
-        set_panel_title "Blitz Talker - RESUMING"
-    fi
+    set_panel_title "$PANEL_DEFAULT_TITLE - Round $round Shots $total_shots"
 
-    ((round++))
-    set_panel_title "Blitz Talker - Round $round Shots $total_shots FIRING"
+    # Refresh in case windows changed
+    mapfile -t WINDOW_IDS < live_windows.txt
 
     for i in "${!WINDOW_IDS[@]}"; do
-        id=${WINDOW_IDS[i]}
+        id="${WINDOW_IDS[$i]}"
 
-        eval "$(xdotool getwindowgeometry --shell "$id" 2>/dev/null)"
+        eval "$(xdotool getwindowgeometry --shell "$id" 2>/dev/null)" || continue
         width=$WIDTH
         height=$HEIGHT
         calc_prompt_click
 
-        xdotool windowactivate --sync "$id"
-        eval $(xdotool getmouselocation --shell)
+        xdotool windowactivate --sync "$id" 2>/dev/null
+
+        eval "$(xdotool getmouselocation --shell)" 2>/dev/null
         saved_x=$X
         saved_y=$Y
 
-        xdotool mousemove --window "$id" "$CLICK_X" "$CLICK_Y"
+        xdotool mousemove --window "$id" "$CLICK_X" "$CLICK_Y" 2>/dev/null
         for k in {1..3}; do
-            xdotool click 4
+            xdotool click 4 2>/dev/null
         done
 
         echo -n "$DEFAULT_PROMPT" | (xclip -selection clipboard 2>/dev/null || wl-copy 2>/dev/null || true)
 
-        xdotool mousemove --window "$id" "$CLICK_X" "$CLICK_Y"
-        xdotool click 1
+        xdotool mousemove --window "$id" "$CLICK_X" "$CLICK_Y" 2>/dev/null
+        xdotool click 1 2>/dev/null
 
-        for (( j=0; j < $BURST_COUNT; j++ )); do
-            xdotool key --window "$id" ctrl+a ctrl+v Return
+        for (( j=0; j < BURST_COUNT; j++ )); do
+            xdotool key --window "$id" ctrl+a ctrl+v Return 2>/dev/null
             sleep "$SHOT_DELAY"
         done
 
-        xdotool mousemove $saved_x $saved_y
+        xdotool mousemove "$saved_x" "$saved_y" 2>/dev/null
 
-        ((total_shots += $BURST_COUNT))
+        ((total_shots += BURST_COUNT))
 
-        set_panel_title "Blitz Talker - Round $round Shots $total_shots FIRING"
-
-        screencap "shot_${round}_$((i+1))_$(date +%s)"
+        #screencap "shot_${round}_$((i+1))_$(date +%s)"
     done
 
-    if [[ "$MODE" == "semi" ]]; then
-        set_panel_title "Blitz Talker - COMPLETE (semi)"
-        set_panel_title "$PANEL_TITLE - READY"
-        echo "MODE=safe" > .imagine_env
-        exit 0
-    fi
+    # Append prompt once per round
+    write_to_gxz
 
-# Auto mode cap
-if [[ "$MODE" == "auto" ]] && (( AUTO_ROUNDS > 0 && round >= AUTO_ROUNDS )); then
-    set_panel_title "Blitz Talker - COMPLETE (auto)"
-    set_panel_title "$PANEL_TITLE - READY"
-    echo "MODE=safe" > .imagine_env
-    exit 0
-fi
-    sleep "$ROUND_DELAY"
+    #sleep "$ROUND_DELAY"
+    sleep 5
 done
+
+# done,tell commander
+set_panel_title "$PANEL_DEFAULT_TITLE - COMPLETE"
+update_key_value .imagine_env FIRE_MODE "N"
+exit 0
