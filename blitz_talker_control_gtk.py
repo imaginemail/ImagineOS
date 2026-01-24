@@ -12,7 +12,6 @@ HOME = os.path.expanduser('~')
 USER_ENV = '.user_env'
 IMAGINE_ENV = '.imagine_env'
 SYSTEM_ENV = '.system_env'
-LIVE_WINDOWS = 'live_windows.txt'
 
 REQUIRED_SYSTEM_VARS = [
     'BROWSER',
@@ -116,6 +115,7 @@ class BlitzControl(Gtk.Window):
         self.flags_head = FLAGS_HEAD
         self.flags_middle = FLAGS_MIDDLE
         self.flags_tail = FLAGS_TAIL
+        self.live_windows = self.system.get('WINDOW_LIST', 'live_windows.txt')  # NEW: configurable window list file
 
         self.user = load_env(USER_ENV, {
             'DEFAULT_URL': self.system.get('DEFAULT_URL', ''),
@@ -439,10 +439,10 @@ class BlitzControl(Gtk.Window):
             GLib.idle_add(lambda r=round_num, s=total_shots: self.status_label.set_text(f"Round {r} - Shots {s}"))
 
             # Fresh IDs from file each round
-            if not os.path.exists(LIVE_WINDOWS) or os.stat(LIVE_WINDOWS).st_size == 0:
+            if not os.path.exists(self.live_windows) or os.stat(self.live_windows).st_size == 0:  # NEW: configurable
                 continue
 
-            with open(LIVE_WINDOWS) as f:
+            with open(self.live_windows) as f:  # NEW: configurable
                 window_ids = [line.strip() for line in f if line.strip()]
 
             self.user = load_env(USER_ENV, self.user)
@@ -602,7 +602,7 @@ class BlitzControl(Gtk.Window):
         script_dir = os.path.dirname(os.path.abspath(__file__))
 
         # File to remove (change name)
-        filename = 'live_windows.txt'
+        filename = self.live_windows  # NEW: uses configurable file name
         file_path = os.path.join(script_dir, filename)
 
         if os.path.exists(file_path):

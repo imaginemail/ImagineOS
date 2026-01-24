@@ -45,6 +45,7 @@ DEFAULT_PROMPT="system is king"
 # TARGET WINDOW SETTINGS
 # =============================================================================
 WINDOW_PATTERNS='Untitled,Make your own video,Imagine - Grok'
+WINDOW_LIST='live_windows.txt'
 WINDOW_PATTERN='Imagine - Grok'
 DEFAULT_WIDTH=640
 DEFAULT_HEIGHT=500
