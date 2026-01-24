@@ -545,9 +545,7 @@ class BlitzControl(Gtk.Window):
                         #self.imagine = load_env(IMAGINE_ENV, self.imagine)
                         #if self.imagine.get('FIRE_MODE', 'N') == 'N':
                         #    break
-                        subprocess.run(['xdotool', 'key', '--window', wid, 'ctrl+a'])
-                        subprocess.run(['xdotool', 'key', '--window', wid, 'ctrl+v'])
-                        subprocess.run(['xdotool', 'key', '--window', wid, 'Return'])
+                        subprocess.run(['xdotool', 'key', '--window', wid, 'ctrl+a', 'ctrl+v', 'Return'])
                         time.sleep(shot_delay)
 
                     # Restore mouse
