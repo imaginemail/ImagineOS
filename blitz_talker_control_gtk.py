@@ -530,6 +530,7 @@ class BlitzControl(Gtk.Window):
                     # Move mouse
                     subprocess.run(['xdotool', 'mousemove', '--window', wid, str(click_x), str(click_y)])
 
+                    self.set_keep_above(False)
                     # 3 scroll
                     for _ in range(3):
                         # allow stop between scrolls
