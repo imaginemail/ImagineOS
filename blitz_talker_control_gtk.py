@@ -2,6 +2,7 @@
 import subprocess
 import os
 import re
+import shlex  # NEW: for precise flag splitting (preserves your deliberate spaces/no-spaces)
 import time
 import threading
 import gi
@@ -47,9 +48,9 @@ def load_flags(key):
     match = re.search(pattern, content)
     if match:
         val = match.group(1)
-        val = val.replace('\\\n', ' ').replace('\\', ' ')
-        parts = [p for p in re.split(r'\s+', val) if p]
-        return parts
+        val = re.sub(r'\\\s*$', '', val)  # NEW: strip trailing backslash (prevents dangling escape error)
+        val = re.sub(r'\\\s*\n\s*', ' ', val)  # NEW: handle proper continuations
+        return shlex.split(val)  # NEW: clean multiline (no \) works too — shlex treats \n as space
     return []
 
 def update_env(file, key, value):
