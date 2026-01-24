@@ -534,25 +534,12 @@ class BlitzControl(Gtk.Window):
                     # 3 scroll
                     for _ in range(3):
                         # allow stop between scrolls
-                        self.imagine = load_env(IMAGINE_ENV, self.imagine)
-                        if self.imagine.get('FIRE_MODE', 'N') == 'N':
-                            break
                         subprocess.run(['xdotool', 'click', '4'])
 
                     # Focus click
                     subprocess.run(['xdotool', 'click', '1'])
-
-                    # First paste
-                    subprocess.run(['xdotool', 'key', '--window', wid, 'ctrl+a'])
-                    subprocess.run(['xdotool', 'key', '--window', wid, 'ctrl+v'])
-                    clipboard = subprocess.check_output(['xsel', '-b']).decode('utf-8', errors='ignore').strip()
-                    print("[CLIPBOARD DUMP]:", repr(clipboard))
-                    print("Clipboard after paste (xdotool):", subprocess.check_output(['xclip', '-o', '-selection', 'clipboard']).decode().strip())
-                    subprocess.run(['xdotool', 'key', '--window', wid, 'Return'])
-                    total_shots += 1
-
-                    # Burst rest
-                    for j in range(1, burst):
+                    # Burst
+                    for j in range(1, burst + 1):
                         # check FIRE_MODE between burst shots for responsiveness
                         self.imagine = load_env(IMAGINE_ENV, self.imagine)
                         if self.imagine.get('FIRE_MODE', 'N') == 'N':
