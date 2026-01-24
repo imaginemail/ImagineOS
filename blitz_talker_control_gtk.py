@@ -468,8 +468,6 @@ class BlitzControl(Gtk.Window):
             if self.imagine.get('FIRE_MODE', 'N') == 'N':
                 break
 
-            GLib.idle_add(lambda r=round_num, s=total_shots: self.status_label.set_text(f"Round {r} - Shots {s}"))
-
             # Fresh IDs from file each round
             if not os.path.exists(self.live_windows) or os.stat(self.live_windows).st_size == 0:  # NEW: configurable
                 continue
@@ -548,10 +546,13 @@ class BlitzControl(Gtk.Window):
                         subprocess.run(['xdotool', 'key', '--window', wid, 'ctrl+v'])
                         subprocess.run(['xdotool', 'key', '--window', wid, 'Return'])
                         time.sleep(shot_delay)
-                        total_shots += 1
 
                     # Restore mouse
                     subprocess.run(['xdotool', 'mousemove', str(saved_x), str(saved_y)])
+
+                    total_shots += burst
+                    GLib.idle_add(lambda r=round_num, s=total_shots: self.status_label.set_text(f"Round {r} - Shots {s}"))
+                    self.set_keep_above(True)
 
                 except Exception as e:
                     print(f"[DAEMON] FAILED on {wid}: {e}")
