@@ -532,6 +532,9 @@ class BlitzControl(Gtk.Window):
                     # 3 scroll
                     for _ in range(3):
                         # allow stop between scrolls
+                        self.imagine = load_env(IMAGINE_ENV, self.imagine)
+                        if self.imagine.get('FIRE_MODE', 'N') == 'N':
+                            break
                         subprocess.run(['xdotool', 'click', '4'])
 
                     # Focus click
@@ -539,9 +542,9 @@ class BlitzControl(Gtk.Window):
                     # Burst
                     for j in range(1, burst + 1):
                         # check FIRE_MODE between burst shots for responsiveness
-                        self.imagine = load_env(IMAGINE_ENV, self.imagine)
-                        if self.imagine.get('FIRE_MODE', 'N') == 'N':
-                            break
+                        #self.imagine = load_env(IMAGINE_ENV, self.imagine)
+                        #if self.imagine.get('FIRE_MODE', 'N') == 'N':
+                        #    break
                         subprocess.run(['xdotool', 'key', '--window', wid, 'ctrl+a'])
                         subprocess.run(['xdotool', 'key', '--window', wid, 'ctrl+v'])
                         subprocess.run(['xdotool', 'key', '--window', wid, 'Return'])
