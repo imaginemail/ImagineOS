@@ -546,7 +546,6 @@ class BlitzControl(Gtk.Window):
                             break
                         subprocess.run(['xdotool', 'key', '--window', wid, 'ctrl+a'])
                         subprocess.run(['xdotool', 'key', '--window', wid, 'ctrl+v'])
-                        print("Clipboard after paste:", subprocess.check_output(['xclip', '-o', '-selection', 'clipboard']).decode().strip())
                         subprocess.run(['xdotool', 'key', '--window', wid, 'Return'])
                         time.sleep(shot_delay)
                         total_shots += 1
@@ -556,7 +555,7 @@ class BlitzControl(Gtk.Window):
 
                 except Exception as e:
                     print(f"[DAEMON] FAILED on {wid}: {e}")
-                    subprocess.Popen(['yad', '--mouse', '--text="FAILED"', '--timeout=60'])
+                    #subprocess.Popen(['yad', '--mouse', '--text="FAILED"', '--timeout=60'])
                     continue
 
             # check FIRE_MODE between rounds for responsiveness
