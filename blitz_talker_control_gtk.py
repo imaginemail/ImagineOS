@@ -84,6 +84,22 @@ def get_urls_from_input(input_str):
         urls = [u for u in parts if u]
     return urls if urls else [input_str]
 
+def get_prompts_from_input(input_str):
+    prompts = []
+    input_str = input_str.strip()
+    if os.path.isfile(input_str):
+        with open(input_str, 'r') as f:
+            for line in f:
+                line = line.split('#', 1)[0].strip()
+                if line:
+                    prompts.append(line)
+    else:
+        if input_str:  # NEW: non-file = single prompt, commas safe (no split)
+            prompts = [input_str]
+        else:
+            prompts = ['system is king']
+    return prompts
+
 def check_required_system_vars(system):
     missing = [k for k in REQUIRED_SYSTEM_VARS if k not in system or system[k] == ""]
     return missing
@@ -120,9 +136,32 @@ class BlitzControl(Gtk.Window):
 
         self.user = load_env(USER_ENV, {
             'DEFAULT_URL': self.system.get('DEFAULT_URL', ''),
-            'DEFAULT_PROMPT': self.system.get('DEFAULT_PROMPT', ''),
             'STAGE_COUNT': '24'
         })
+        # NEW: collect multiple PROMPT= from .user_env
+        collected_prompts = []
+        temp_lines = []
+        if os.path.exists(USER_ENV):
+            with open(USER_ENV, 'r') as f:
+                for line in f:
+                    stripped = line.strip()
+                    if stripped.startswith('PROMPT='):
+                        v = stripped.split('=', 1)[1].strip()
+                        if (v.startswith('"') and v.endswith('"')) or (v.startswith("'") and v.endswith("'")):
+                            v = v[1:-1]
+                        collected_prompts.append(v)
+                    else:
+                        temp_lines.append(line)
+        self.collected_prompts = collected_prompts
+
+        if collected_prompts:
+            if len(collected_prompts) > 1:
+                self.prompt_entry_text = f"Multiple prompts ({len(collected_prompts)}) in .user_env"
+            else:
+                self.prompt_entry_text = collected_prompts[0]
+        else:
+            self.prompt_entry_text = ''
+
         update_env(IMAGINE_ENV, 'FIRE_MODE', 'N')
         self.imagine = load_env(IMAGINE_ENV, {
             'BURST_COUNT': self.system.get('BURST_COUNT', '1'),
@@ -161,11 +200,24 @@ class BlitzControl(Gtk.Window):
         self.url_entry.set_text(self.user.get('DEFAULT_URL'))
         self.url_entry.connect("changed", lambda w: self.save_user())
         url_box.pack_start(self.url_entry, True, True, 0)
-        pick_btn = Gtk.Button(label="Pick File")
-        pick_btn.connect("clicked", self.on_pick_url_file)
-        url_box.pack_start(pick_btn, False, False, 0)
+        pick_url_btn = Gtk.Button(label="Pick File")
+        pick_url_btn.connect("clicked", self.on_pick_url_file)
+        url_box.pack_start(pick_url_btn, False, False, 0)
 
-        self.prompt_entry = self.add_entry(box, "Prompt:", self.user.get('DEFAULT_PROMPT'))
+        prompt_box = Gtk.Box(spacing=6)
+        box.pack_start(prompt_box, False, False, 0)
+        prompt_label = Gtk.Label(label="Prompt(s):")
+        prompt_label.set_size_request(120, -1)
+        prompt_box.pack_start(prompt_label, False, False, 0)
+        self.prompt_entry = Gtk.Entry()
+        self.prompt_entry.set_hexpand(True)
+        self.prompt_entry.set_text(self.prompt_entry_text)
+        self.prompt_entry.connect("changed", lambda w: self.save_user())
+        prompt_box.pack_start(self.prompt_entry, True, True, 0)
+        pick_prompt_btn = Gtk.Button(label="Pick File")
+        pick_prompt_btn.connect("clicked", self.on_pick_prompt_file)
+        prompt_box.pack_start(pick_prompt_btn, False, False, 0)
+
         # Horizontal row for the three spin controls
         controls_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=30)
         box.pack_start(controls_box, False, False, 0)
@@ -194,7 +246,7 @@ class BlitzControl(Gtk.Window):
         stage_hbox = Gtk.Box(spacing=6)
         stage_label = Gtk.Label(label="Targets:")
         stage_hbox.pack_start(stage_label, False, False, 0)
-        stage_adj = Gtk.Adjustment(value=int(self.user.get('STAGE_COUNT')), lower=1, upper=200, step_increment=1)
+        stage_adj = Gtk.Adjustment(value=int(self.user.get('STAGE_COUNT', 24)), lower=1, upper=200, step_increment=1)
         self.stage_spin = Gtk.SpinButton(adjustment=stage_adj)
         self.stage_spin.connect("value-changed", lambda w: self.save_user())
         stage_hbox.pack_start(self.stage_spin, True, True, 0)
@@ -246,8 +298,22 @@ class BlitzControl(Gtk.Window):
         return spin
 
     def save_user(self):
+        # NEW: special handling for PROMPT to preserve manual multiple lines when not changed
+        prompt_text = self.prompt_entry.get_text().strip()
+        if not prompt_text.startswith("Multiple prompts"):
+            # clear old PROMPT lines, add new
+            lines = []
+            if os.path.exists(USER_ENV):
+                with open(USER_ENV, 'r') as f:
+                    for line in f:
+                        if not line.strip().startswith('PROMPT='):
+                            lines.append(line)
+            if prompt_text:
+                lines.append(f'PROMPT="{prompt_text}"\n')
+            with open(USER_ENV, 'w') as f:
+                f.writelines(lines)
+
         update_env(USER_ENV, 'DEFAULT_URL', self.url_entry.get_text())
-        update_env(USER_ENV, 'DEFAULT_PROMPT', self.prompt_entry.get_text())
         update_env(USER_ENV, 'STAGE_COUNT', str(int(self.stage_spin.get_value())))
 
     def save_imagine(self):
@@ -266,6 +332,21 @@ class BlitzControl(Gtk.Window):
         if response == Gtk.ResponseType.OK:
             filename = dialog.get_filename()
             self.url_entry.set_text(filename)
+            self.save_user()
+        dialog.destroy()
+
+    def on_pick_prompt_file(self, widget):
+        dialog = Gtk.FileChooserDialog(title="Pick Prompt File", parent=self, action=Gtk.FileChooserAction.OPEN)
+        dialog.add_buttons(Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL, Gtk.STOCK_OPEN, Gtk.ResponseType.OK)
+        filter_text = Gtk.FileFilter()
+        filter_text.set_name("Text files")
+        filter_text.add_mime_type("text/plain")
+        dialog.add_filter(filter_text)
+
+        response = dialog.run()
+        if response == Gtk.ResponseType.OK:
+            filename = dialog.get_filename()
+            self.prompt_entry.set_text(filename)
             self.save_user()
         dialog.destroy()
 
@@ -475,12 +556,11 @@ class BlitzControl(Gtk.Window):
             with open(self.live_windows) as f:  # NEW: configurable
                 window_ids = [line.strip() for line in f if line.strip()]
 
-            self.user = load_env(USER_ENV, self.user)
-            prompt = self.user.get('DEFAULT_PROMPT', 'system is king')
-
-            subprocess.run(['xclip', '-selection', 'clipboard'], input=prompt.encode(), check=False)
-            print("Clipboard after copy (xclip):", subprocess.check_output(['xclip', '-o', '-selection', 'clipboard']).decode().strip())
-
+            prompt_input = self.prompt_entry.get_text().strip()
+            if prompt_input.startswith("Multiple prompts"):
+                prompts = self.collected_prompts
+            else:
+                prompts = get_prompts_from_input(prompt_input)
 
             burst = int(self.imagine.get('BURST_COUNT', 4))
 
@@ -541,6 +621,14 @@ class BlitzControl(Gtk.Window):
                     subprocess.run(['xdotool', 'click', '1'])
                     # Burst
                     for j in range(1, burst + 1):
+                        current_prompt = prompts[(j - 1) % len(prompts)]
+
+                        # NEW: '_' (or empty after strip) = fallback blank prompt
+                        if not current_prompt.strip() or current_prompt.strip() == '_':
+                            current_prompt = 'system is king'
+
+                        subprocess.run(['xclip', '-selection', 'clipboard'], input=current_prompt.encode(), check=False)
+
                         # check FIRE_MODE between burst shots for responsiveness
                         #self.imagine = load_env(IMAGINE_ENV, self.imagine)
                         #if self.imagine.get('FIRE_MODE', 'N') == 'N':
@@ -557,7 +645,6 @@ class BlitzControl(Gtk.Window):
 
                 except Exception as e:
                     print(f"[DAEMON] FAILED on {wid}: {e}")
-                    #subprocess.Popen(['yad', '--mouse', '--text="FAILED"', '--timeout=60'])
                     continue
 
             # check FIRE_MODE between rounds for responsiveness
@@ -603,7 +690,7 @@ class BlitzControl(Gtk.Window):
 
         current = self.prompt_entry.get_text()
         proc = subprocess.Popen(
-            ['yad', '--text-info', '--on-top', '--editable', '--title=Edit Default Prompt',
+            ['yad', '--text-info', '--on-top', '--editable', '--title=Edit Prompt',
              '--width=900', '--height=600', '--button=Save:0', '--button=Cancel:1'],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True
         )
