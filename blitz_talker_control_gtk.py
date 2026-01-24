@@ -123,6 +123,7 @@ class BlitzControl(Gtk.Window):
             'DEFAULT_PROMPT': self.system.get('DEFAULT_PROMPT', ''),
             'STAGE_COUNT': '24'
         })
+        update_env(IMAGINE_ENV, 'FIRE_MODE', 'N')
         self.imagine = load_env(IMAGINE_ENV, {
             'BURST_COUNT': self.system.get('BURST_COUNT', '1'),
             'FIRE_COUNT': self.system.get('FIRE_COUNT', '1'),
