@@ -165,9 +165,39 @@ class BlitzControl(Gtk.Window):
         url_box.pack_start(pick_btn, False, False, 0)
 
         self.prompt_entry = self.add_entry(box, "Prompt:", self.user.get('DEFAULT_PROMPT'))
-        self.burst_spin = self.add_spin(box, "Shots per window (burst):", int(self.imagine.get('BURST_COUNT', 1)), 1, 20)
-        self.fire_spin = self.add_spin(box, "Number fire rounds:", int(self.imagine.get('FIRE_COUNT', 1)), 1, 99)
-        self.stage_spin = self.add_spin(box, "Number of windows:", int(self.user.get('STAGE_COUNT', 24)), 1, 200)
+        # Horizontal row for the three spin controls
+        controls_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=30)
+        box.pack_start(controls_box, False, False, 0)
+
+        # Burst
+        burst_hbox = Gtk.Box(spacing=6)
+        burst_label = Gtk.Label(label="Burst:")
+        burst_hbox.pack_start(burst_label, False, False, 0)
+        burst_adj = Gtk.Adjustment(value=int(self.imagine.get('BURST_COUNT', 1)), lower=1, upper=20, step_increment=1)
+        self.burst_spin = Gtk.SpinButton(adjustment=burst_adj)
+        self.burst_spin.connect("value-changed", lambda w: self.save_imagine())
+        burst_hbox.pack_start(self.burst_spin, True, True, 0)
+        controls_box.pack_start(burst_hbox, True, True, 0)
+
+        # Rounds
+        fire_hbox = Gtk.Box(spacing=6)
+        fire_label = Gtk.Label(label="Rounds:")
+        fire_hbox.pack_start(fire_label, False, False, 0)
+        fire_adj = Gtk.Adjustment(value=int(self.imagine.get('FIRE_COUNT', 1)), lower=1, upper=99, step_increment=1)
+        self.fire_spin = Gtk.SpinButton(adjustment=fire_adj)
+        self.fire_spin.connect("value-changed", lambda w: self.save_imagine())
+        fire_hbox.pack_start(self.fire_spin, True, True, 0)
+        controls_box.pack_start(fire_hbox, True, True, 0)
+
+        # Targets
+        stage_hbox = Gtk.Box(spacing=6)
+        stage_label = Gtk.Label(label="Targets:")
+        stage_hbox.pack_start(stage_label, False, False, 0)
+        stage_adj = Gtk.Adjustment(value=int(self.user.get('STAGE_COUNT')), lower=1, upper=200, step_increment=1)
+        self.stage_spin = Gtk.SpinButton(adjustment=stage_adj)
+        self.stage_spin.connect("value-changed", lambda w: self.save_user())
+        stage_hbox.pack_start(self.stage_spin, True, True, 0)
+        controls_box.pack_start(stage_hbox, True, True, 0)
 
         self.status_label = Gtk.Label(label="Ready")
         box.pack_start(self.status_label, False, False, 0)
@@ -396,7 +426,7 @@ class BlitzControl(Gtk.Window):
         x_start = margin + max(0, (available_width - total_grid_width) // 2)
         y_start = margin + max(0, (available_height - (height + (rows - 1) * step_y)) // 2)
 
-        with open(LIVE_WINDOWS, 'w') as f:
+        with open(self.live_windows, 'w') as f:  # NEW: uses configurable file name
             for idx, wid in enumerate(ids):
                 r = idx // cols
                 c = idx % cols
