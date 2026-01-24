@@ -16,7 +16,7 @@ LIVE_WINDOWS = 'live_windows.txt'
 
 REQUIRED_SYSTEM_VARS = [
     'BROWSER',
-    'WINDOW_PATTERN',
+    'WINDOW_PATTERNS',
     'DEFAULT_WIDTH',
     'DEFAULT_HEIGHT',
     'MAX_OVERLAP_PERCENT'
@@ -266,8 +266,8 @@ class BlitzControl(Gtk.Window):
         GLib.timeout_add_seconds(grid_start_delay, lambda: self.grid_windows(num) or False)
 
     def grid_windows(self, expected_num):
-        pattern = self.system.get('WINDOW_PATTERN', '')
-        pattern = pattern.strip().strip('"').strip("'").lower()
+        patterns_raw = self.system.get('WINDOW_PATTERNS', 'Imagine - Grok')
+        patterns = [p.strip().strip('"').strip("'").lower() for p in patterns_raw.split(',') if p.strip()]
         max_tries = 30
         sleep_between = int(self.system.get('GRID_START_DELAY'))
 
@@ -275,9 +275,7 @@ class BlitzControl(Gtk.Window):
         stagnant_limit = 3
         stagnant_count = 0
         last_matched = []
-
-        print(f"[GRID] Waiting for up to {expected_num} windows containing '{pattern}'")
-
+        print(f"[GRID] Waiting for up to {expected_num} windows matching any of {patterns}")
         for attempt in range(1, max_tries + 1):
             print(f"\n[GRID] Attempt {attempt}/{max_tries}")
 
@@ -305,7 +303,7 @@ class BlitzControl(Gtk.Window):
                     ).decode().strip().lower()
                 except:
                     continue
-                if pattern in name:
+                if any(p in name for p in patterns):
                     matched.append(wid)
 
             print(f"[GRID] Matching windows: {len(matched)}")
