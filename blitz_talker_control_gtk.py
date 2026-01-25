@@ -379,8 +379,8 @@ class BlitzControl(Gtk.Window):
                 subprocess.Popen(cmd)
             except Exception as e:
                 print(f"[STAGE] Failed to launch: {e}")
-        	stage_delay = float(self.system.get('STAGE_DELAY', 3.0))
-            GLib.timeout_add(int(stage_delay * 1000), lambda: None or False)
+            stage_delay = float(self.system.get('STAGE_DELAY', 3.0))
+            time.sleep(stage_delay)
 
         grid_start_delay = float(self.system.get('GRID_START_DELAY', 10.0))
         print(f"[STAGE] Waiting {grid_start_delay}s before gridding")
@@ -444,8 +444,8 @@ class BlitzControl(Gtk.Window):
                     print("[GRID] Stagnant, no matches. Giving up.")
                 return False
 
-        	sleep_between = float(self.system.get('GRID_START_DELAY', 10.0))
-            GLib.timeout_add(int(sleep_between * 1000), lambda: None or False)
+            sleep_between = float(self.system.get('GRID_START_DELAY', 10.0))
+            time.sleep(sleep_between)
 
         if last_matched:
             print("[GRID] Max tries reached. Gridding last matches.")
@@ -637,7 +637,7 @@ class BlitzControl(Gtk.Window):
                         subprocess.run(['xclip', '-selection', 'clipboard'], input=current_prompt.encode(), check=False)
 
                         subprocess.run(['xdotool', 'key', '--window', wid, 'ctrl+a', 'ctrl+v', 'Return'])
-                        GLib.timeout_add(int(shot_delay * 1000), lambda: None or False)
+                        time.sleep(shot_delay)
 
                     # Restore mouse
                     subprocess.run(['xdotool', 'mousemove', str(saved_x), str(saved_y)])
@@ -656,6 +656,7 @@ class BlitzControl(Gtk.Window):
                 break
 
             round_delay = float(self.system.get('ROUND_DELAY', 10.0))
+            #time.sleep(5)
             GLib.timeout_add(int(round_delay * 1000), lambda: None or False)
 
         GLib.idle_add(lambda: self.status_label.set_text("COMPLETE"))
