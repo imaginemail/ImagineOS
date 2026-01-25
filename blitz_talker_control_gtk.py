@@ -367,6 +367,9 @@ class BlitzControl(Gtk.Window):
         for i in range(num):
             url = urls[i % len(urls)]
             cmd = cmd_base + [url]
+            if self.flags_tail:
+                cmd[-2] = cmd[-2] + cmd[-1]
+                cmd.pop()
             print(f"[STAGE] Launching: {' '.join(cmd)}")
             try:
                 subprocess.Popen(cmd)
