@@ -632,10 +632,6 @@ class BlitzControl(Gtk.Window):
 
                         subprocess.run(['xclip', '-selection', 'clipboard'], input=current_prompt.encode(), check=False)
 
-                        # check FIRE_MODE between burst shots for responsiveness
-                        #self.imagine = load_env(IMAGINE_ENV, self.imagine)
-                        #if self.imagine.get('FIRE_MODE', 'N') == 'N':
-                        #    break
                         subprocess.run(['xdotool', 'key', '--window', wid, 'ctrl+a', 'ctrl+v', 'Return'])
                         time.sleep(shot_delay)
 
