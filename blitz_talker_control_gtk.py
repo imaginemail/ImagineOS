@@ -2,7 +2,7 @@
 import subprocess
 import os
 import re
-import shlex  # NEW: for precise flag splitting (preserves your deliberate spaces/no-spaces)
+import shlex # NEW: for precise flag splitting (preserves your deliberate spaces/no-spaces)
 import time
 import threading
 import gi
@@ -48,9 +48,9 @@ def load_flags(key):
     match = re.search(pattern, content)
     if match:
         val = match.group(1)
-        val = re.sub(r'\\\s*$', '', val)  # NEW: strip trailing backslash (prevents dangling escape error)
-        val = re.sub(r'\\\s*\n\s*', ' ', val)  # NEW: handle proper continuations
-        return shlex.split(val)  # NEW: clean multiline (no \) works too — shlex treats \n as space
+        val = re.sub(r'\\\s*$', '', val) # NEW: strip trailing backslash (prevents dangling escape error)
+        val = re.sub(r'\\\s*\n\s*', ' ', val) # NEW: handle proper continuations
+        return shlex.split(val) # NEW: clean multiline (no \) works too — shlex treats \n as space
     return []
 
 def update_env(file, key, value):
@@ -92,17 +92,40 @@ def get_prompts_from_input(input_str):
             for line in f:
                 line = line.split('#', 1)[0].strip()
                 if line:
-                    prompts.append(line)
+                    prompts.append(line)  # keep empty lines as blank prompts
     else:
-        if input_str:  # NEW: non-file = single prompt, commas safe (no split)
+        if input_str:
             prompts = [input_str]
         else:
-            prompts = ['system is king']
+            prompts = ['']  # ensure at least one blank
     return prompts
 
 def check_required_system_vars(system):
     missing = [k for k in REQUIRED_SYSTEM_VARS if k not in system or system[k] == ""]
     return missing
+
+# Strict hierarchy: system defaults → imagine script state → user final override
+def load_all_env(self):
+    merged = load_env(SYSTEM_ENV, {})
+    merged.update(load_env(IMAGINE_ENV, {}))
+    merged.update(load_env(USER_ENV, {}))
+    self.env = merged
+    self.flags_head = load_flags('BROWSER_FLAGS_HEAD')
+    self.flags_middle = load_flags('BROWSER_FLAGS_MIDDLE')
+    self.flags_tail = load_flags('BROWSER_FLAGS_TAIL')
+    self.live_windows = self.env['WINDOW_LIST']
+    # Multi PROMPT from user (overrides all)
+    collected_prompts = []
+    if os.path.exists(USER_ENV):
+        with open(USER_ENV, 'r') as f:
+            for line in f:
+                stripped = line.strip()
+                if stripped.startswith('PROMPT='):
+                    v = stripped.split('=', 1)[1].strip()
+                    if (v.startswith('"') and v.endswith('"')) or (v.startswith("'") and v.endswith("'")):
+                        v = v[1:-1]
+                    collected_prompts.append(v)
+    self.collected_prompts = collected_prompts
 
 SYSTEM = load_env(SYSTEM_ENV, {})
 missing = check_required_system_vars(SYSTEM)
@@ -117,62 +140,19 @@ if missing:
         print(f"[ERROR] Failed to launch editor 'kwrite': {e}")
     os._exit(1)
 
-FLAGS_HEAD = load_flags('BROWSER_FLAGS_HEAD')
-FLAGS_MIDDLE = load_flags('BROWSER_FLAGS_MIDDLE')
-FLAGS_TAIL = load_flags('BROWSER_FLAGS_TAIL')
-
 class BlitzControl(Gtk.Window):
+
     def __init__(self):
         panel_title = SYSTEM.get('PANEL_DEFAULT_TITLE', '.Blitz Talker.')
         super().__init__(title=panel_title)
         self.set_keep_above(True)
         self.set_border_width(12)
+        load_all_env(self) # initial full merged load
 
-        self.system = SYSTEM
-        self.flags_head = FLAGS_HEAD
-        self.flags_middle = FLAGS_MIDDLE
-        self.flags_tail = FLAGS_TAIL
-        self.live_windows = self.system.get('WINDOW_LIST', 'live_windows.txt')  # NEW: configurable window list file
-
-        self.user = load_env(USER_ENV, {
-            'DEFAULT_URL': self.system.get('DEFAULT_URL', ''),
-            'STAGE_COUNT': '24'
-        })
-        # NEW: collect multiple PROMPT= from .user_env
-        collected_prompts = []
-        temp_lines = []
-        if os.path.exists(USER_ENV):
-            with open(USER_ENV, 'r') as f:
-                for line in f:
-                    stripped = line.strip()
-                    if stripped.startswith('PROMPT='):
-                        v = stripped.split('=', 1)[1].strip()
-                        if (v.startswith('"') and v.endswith('"')) or (v.startswith("'") and v.endswith("'")):
-                            v = v[1:-1]
-                        collected_prompts.append(v)
-                    else:
-                        temp_lines.append(line)
-        self.collected_prompts = collected_prompts
-
-        if collected_prompts:
-            if len(collected_prompts) > 1:
-                self.prompt_entry_text = f"Multiple prompts ({len(collected_prompts)}) in .user_env"
-            else:
-                self.prompt_entry_text = collected_prompts[0]
-        else:
-            self.prompt_entry_text = ''
-
-        update_env(IMAGINE_ENV, 'FIRE_MODE', 'N')
-        self.imagine = load_env(IMAGINE_ENV, {
-            'BURST_COUNT': self.system.get('BURST_COUNT', '1'),
-            'FIRE_COUNT': self.system.get('FIRE_COUNT', '1'),
-            'FIRE_MODE': 'N'
-        })
-
-        panel_w = int(self.system.get('PANEL_DEFAULT_WIDTH'))
-        panel_h = int(self.system.get('PANEL_DEFAULT_HEIGHT'))
-        x_offset = int(self.system.get('PANEL_DEFAULT_X_OFFSET'))
-        y_offset = int(self.system.get('PANEL_DEFAULT_Y_OFFSET'))
+        panel_w = int(self.env['PANEL_DEFAULT_WIDTH'])
+        panel_h = int(self.env['PANEL_DEFAULT_HEIGHT'])
+        x_offset = int(self.env['PANEL_DEFAULT_X_OFFSET'])
+        y_offset = int(self.env['PANEL_DEFAULT_Y_OFFSET'])
         self.set_default_size(panel_w, panel_h)
 
         try:
@@ -197,7 +177,7 @@ class BlitzControl(Gtk.Window):
         url_box.pack_start(url_label, False, False, 0)
         self.url_entry = Gtk.Entry()
         self.url_entry.set_hexpand(True)
-        self.url_entry.set_text(self.user.get('DEFAULT_URL'))
+        self.url_entry.set_text(self.env['DEFAULT_URL'])
         self.url_entry.connect("changed", lambda w: self.save_user())
         url_box.pack_start(self.url_entry, True, True, 0)
         pick_url_btn = Gtk.Button(label="Pick File")
@@ -211,7 +191,16 @@ class BlitzControl(Gtk.Window):
         prompt_box.pack_start(prompt_label, False, False, 0)
         self.prompt_entry = Gtk.Entry()
         self.prompt_entry.set_hexpand(True)
-        self.prompt_entry.set_text(self.prompt_entry_text)
+
+        if self.collected_prompts:
+            if len(self.collected_prompts) > 1:
+                prompt_text = f"Multiple prompts ({len(self.collected_prompts)}) in .user_env"
+            else:
+                prompt_text = self.collected_prompts[0]
+        else:
+            prompt_text = ''
+        self.prompt_entry.set_text(prompt_text)
+
         self.prompt_entry.connect("changed", lambda w: self.save_user())
         prompt_box.pack_start(self.prompt_entry, True, True, 0)
         pick_prompt_btn = Gtk.Button(label="Pick File")
@@ -226,7 +215,7 @@ class BlitzControl(Gtk.Window):
         burst_hbox = Gtk.Box(spacing=6)
         burst_label = Gtk.Label(label="Burst:")
         burst_hbox.pack_start(burst_label, False, False, 0)
-        burst_adj = Gtk.Adjustment(value=int(self.imagine.get('BURST_COUNT', 1)), lower=1, upper=20, step_increment=1)
+        burst_adj = Gtk.Adjustment(value=int(self.env['BURST_COUNT']), lower=1, upper=20, step_increment=1)
         self.burst_spin = Gtk.SpinButton(adjustment=burst_adj)
         self.burst_spin.connect("value-changed", lambda w: self.save_imagine())
         burst_hbox.pack_start(self.burst_spin, True, True, 0)
@@ -236,7 +225,7 @@ class BlitzControl(Gtk.Window):
         fire_hbox = Gtk.Box(spacing=6)
         fire_label = Gtk.Label(label="Rounds:")
         fire_hbox.pack_start(fire_label, False, False, 0)
-        fire_adj = Gtk.Adjustment(value=int(self.imagine.get('FIRE_COUNT', 1)), lower=1, upper=99, step_increment=1)
+        fire_adj = Gtk.Adjustment(value=int(self.env['FIRE_COUNT']), lower=1, upper=99, step_increment=1)
         self.fire_spin = Gtk.SpinButton(adjustment=fire_adj)
         self.fire_spin.connect("value-changed", lambda w: self.save_imagine())
         fire_hbox.pack_start(self.fire_spin, True, True, 0)
@@ -246,7 +235,7 @@ class BlitzControl(Gtk.Window):
         stage_hbox = Gtk.Box(spacing=6)
         stage_label = Gtk.Label(label="Targets:")
         stage_hbox.pack_start(stage_label, False, False, 0)
-        stage_adj = Gtk.Adjustment(value=int(self.user.get('STAGE_COUNT', 24)), lower=1, upper=200, step_increment=1)
+        stage_adj = Gtk.Adjustment(value=int(self.env['STAGE_COUNT']), lower=1, upper=200, step_increment=1)
         self.stage_spin = Gtk.SpinButton(adjustment=stage_adj)
         self.stage_spin.connect("value-changed", lambda w: self.save_user())
         stage_hbox.pack_start(self.stage_spin, True, True, 0)
@@ -262,7 +251,7 @@ class BlitzControl(Gtk.Window):
         stage_btn.connect("clicked", self.on_stage)
         btn_box.pack_start(stage_btn, True, True, 0)
 
-        self.fire_btn = Gtk.Button(label="FIRE" if self.imagine.get('FIRE_MODE', 'N') == 'N' else "STOP")
+        self.fire_btn = Gtk.Button(label="FIRE" if self.env['FIRE_MODE'] == 'N' else "STOP")
         self.fire_btn.connect("clicked", self.on_fire)
         btn_box.pack_start(self.fire_btn, True, True, 0)
 
@@ -297,8 +286,8 @@ class BlitzControl(Gtk.Window):
         hbox.pack_start(spin, True, True, 0)
         return spin
 
+    # NEW: special handling for PROMPT to preserve manual multiple lines when not changed
     def save_user(self):
-        # NEW: special handling for PROMPT to preserve manual multiple lines when not changed
         prompt_text = self.prompt_entry.get_text().strip()
         if not prompt_text.startswith("Multiple prompts"):
             # clear old PROMPT lines, add new
@@ -351,21 +340,15 @@ class BlitzControl(Gtk.Window):
         dialog.destroy()
 
     def on_stage(self, widget):
-        browser = self.system.get('BROWSER')
-        try:
-            subprocess.run(['pkill', browser], check=False)
-        except:
-            pass
-        num = int(self.stage_spin.get_value())
+        load_all_env(self)
+        num = self.stage_count
         url_input = self.url_entry.get_text().strip()
         urls = get_urls_from_input(url_input)
         if not urls:
             print("[STAGE] No URLs provided; aborting stage.")
             return
 
-        browser = self.system.get('BROWSER')
-        cmd_base = [browser] + self.flags_head + self.flags_middle + self.flags_tail
-
+        cmd_base = [self.browser] + self.flags_head + self.flags_middle + self.flags_tail
 
         print(f"[STAGE] Launching {num} windows...")
         for i in range(num):
@@ -379,16 +362,15 @@ class BlitzControl(Gtk.Window):
                 subprocess.Popen(cmd)
             except Exception as e:
                 print(f"[STAGE] Failed to launch: {e}")
-            stage_delay = float(self.system.get('STAGE_DELAY', 3.0))
-            time.sleep(stage_delay)
 
-        grid_start_delay = float(self.system.get('GRID_START_DELAY', 10.0))
-        print(f"[STAGE] Waiting {grid_start_delay}s before gridding")
-        GLib.timeout_add_seconds(grid_start_delay, lambda: self.grid_windows(num) or False)
+            time.sleep(self.stage_delay)
+
+        print(f"[STAGE] Waiting {self.grid_start_delay}s before gridding")
+        GLib.timeout_add(int(self.grid_start_delay * 1000), lambda: self.grid_windows(num) or False)
 
     def grid_windows(self, expected_num):
-        patterns_raw = self.system.get('WINDOW_PATTERNS', 'Imagine - Grok')
-        patterns = [p.strip().strip('"').strip("'").lower() for p in patterns_raw.split(',') if p.strip()]
+        load_all_env(self)
+        patterns = [p.strip().strip('"').strip("'").lower() for p in self.window_patterns.split(',') if p.strip()]
         max_tries = 30
 
         last_total_windows = -1
@@ -444,8 +426,7 @@ class BlitzControl(Gtk.Window):
                     print("[GRID] Stagnant, no matches. Giving up.")
                 return False
 
-            sleep_between = float(self.system.get('GRID_START_DELAY', 10.0))
-            time.sleep(sleep_between)
+            time.sleep(self.grid_start_delay)
 
         if last_matched:
             print("[GRID] Max tries reached. Gridding last matches.")
@@ -455,10 +436,7 @@ class BlitzControl(Gtk.Window):
         return False
 
     def _grid_ids(self, ids):
-        width = int(self.system.get('DEFAULT_WIDTH'))
-        height = int(self.system.get('DEFAULT_HEIGHT'))
-        max_overlap_pct = int(self.system.get('MAX_OVERLAP_PERCENT'))
-
+        load_all_env(self)
         try:
             screen = subprocess.check_output(['xdotool', 'getdisplaygeometry']).decode().strip().split()
             sw, sh = int(screen[0]), int(screen[1])
@@ -472,10 +450,8 @@ class BlitzControl(Gtk.Window):
         n = len(ids)
         if n == 0:
             return
-
-        effective_step = max(1, int(width * (100 - max_overlap_pct) / 100))
-        max_cols_by_width = 1 + (available_width - width) // effective_step if available_width >= width else 1
-
+        effective_step = max(1, int(self.default_width * (100 - self.max_overlap_pct) / 100))
+        max_cols_by_width = 1 + (available_width - self.default_width) // effective_step if available_width >= self.default_width else 1
         desired_rows = 2
         desired_cols = (n + desired_rows - 1) // desired_rows
 
@@ -488,80 +464,74 @@ class BlitzControl(Gtk.Window):
 
         if cols == 1:
             step_x = 0
-            total_grid_width = width
+            total_grid_width = self.default_width
         else:
-            min_total_width = width + (cols - 1) * effective_step
+            min_total_width = self.default_width + (cols - 1) * effective_step
             if min_total_width <= available_width:
-                extra_space = available_width - width
+                extra_space = available_width - self.default_width
                 step_x = extra_space // (cols - 1)
                 if step_x < effective_step:
                     step_x = effective_step
             else:
-                step_x = max(1, (available_width - width) // (cols - 1))
-            total_grid_width = width + (cols - 1) * step_x
+                step_x = max(1, (available_width - self.default_width) // (cols - 1))
+            total_grid_width = self.default_width + (cols - 1) * step_x
 
-        vertical_effective_step = max(1, int(height * (100 - max_overlap_pct) / 100))
+        vertical_effective_step = max(1, int(self.default_height * (100 - self.max_overlap_pct) / 100))
         if rows == 1:
             step_y = 0
         else:
-            min_total_height = height + (rows - 1) * vertical_effective_step
+            min_total_height = self.default_height + (rows - 1) * vertical_effective_step
             if min_total_height <= available_height:
-                extra_vspace = available_height - height
+                extra_vspace = available_height - self.default_height
                 step_y = extra_vspace // (rows - 1)
                 if step_y < vertical_effective_step:
                     step_y = vertical_effective_step
             else:
-                step_y = max(1, (available_height - height) // (rows - 1))
+                step_y = max(1, (available_height - self.default_height) // (rows - 1))
 
         x_start = margin + max(0, (available_width - total_grid_width) // 2)
-        y_start = margin + max(0, (available_height - (height + (rows - 1) * step_y)) // 2)
+        y_start = margin + max(0, (available_height - (self.default_height + (rows - 1) * step_y)) // 2)
 
-        with open(self.live_windows, 'w') as f:  # NEW: uses configurable file name
+        with open(self.live_windows, 'w') as f: # NEW: uses configurable file name
             for idx, wid in enumerate(ids):
                 r = idx // cols
                 c = idx % cols
                 x = int(x_start + c * step_x)
                 y = int(y_start + r * step_y)
                 try:
-                    subprocess.run(['xdotool', 'windowsize', wid, str(width), str(height)], check=False)
+                    subprocess.run(['xdotool', 'windowsize', wid, str(self.default_width), str(self.default_height)], check=False)
                     subprocess.run(['xdotool', 'windowmove', wid, str(x), str(y)], check=False)
                 except Exception as e:
                     print(f"[GRID] Failed on {wid}: {e}")
                 f.write(wid + '\n')
 
+    # NEW: central stop check (reloads env + checks FIRE_MODE)
+    def should_stop(self):
+        load_all_env(self)
+        return self.fire_mode == 'N'
+
     def daemon_thread_func(self):
         total_shots = 0
-        fire_count = int(self.imagine.get('FIRE_COUNT', 1))
-        shot_delay = float(self.system.get('SHOT_DELAY', 0.5))
+        load_all_env(self)
 
-        prompt_x_pct = self.system.get('PROMPT_X_FROM_LEFT', '35%')
-        prompt_y_pct = self.system.get('PROMPT_Y_FROM_BOTTOM', '25%')
-
-        def _parse_shell_output(text):
+    def _parse_shell_output(text):
             d = {}
             for line in text.splitlines():
                 line = line.strip()
-                if not line:
+                if not line or ':' not in line:
                     continue
-                if ':' in line:
-                    k, v = line.split(':', 1)
-                elif '=' in line:
-                    k, v = line.split('=', 1)
-                else:
-                    continue
+                k, v = line.split(':', 1)
                 d[k.strip().upper()] = v.strip()
             return d
 
-        for round_num in range(1, fire_count + 1):
-            self.imagine = load_env(IMAGINE_ENV, self.imagine)
-            if self.imagine.get('FIRE_MODE', 'N') == 'N':
+            for round_num in range(1, self.fire_count + 1):
+            if self.should_stop():
                 break
 
             # Fresh IDs from file each round
-            if not os.path.exists(self.live_windows) or os.stat(self.live_windows).st_size == 0:  # NEW: configurable
+            if not os.path.exists(self.live_windows) or os.stat(self.live_windows).st_size == 0: # NEW: configurable
                 continue
-
-            with open(self.live_windows) as f:  # NEW: configurable
+            with open(self.live_windows) as f: # NEW: configurable
                 window_ids = [line.strip() for line in f if line.strip()]
 
             prompt_input = self.prompt_entry.get_text().strip()
@@ -570,15 +540,10 @@ class BlitzControl(Gtk.Window):
             else:
                 prompts = get_prompts_from_input(prompt_input)
 
-            burst = int(self.imagine.get('BURST_COUNT', 4))
+            burst = self.burst_count
 
             for wid in window_ids:
                 try:
-                    # Check FIRE_MODE before each window
-                    self.imagine = load_env(IMAGINE_ENV, self.imagine)
-                    if self.imagine.get('FIRE_MODE', 'N') == 'N':
-                        break
-
                     # Activate
                     subprocess.run(['xdotool', 'windowactivate', '--sync', wid])
 
@@ -591,15 +556,15 @@ class BlitzControl(Gtk.Window):
                     height = int(geom_dict['HEIGHT'])
 
                     # Click calc
-                    if '%' in prompt_x_pct:
-                        click_x = int(width * int(prompt_x_pct.rstrip('%')) / 100)
+                    if '%' in self.prompt_x_from_left:
+                        click_x = int(width * int(self.prompt_x_from_left.rstrip('%')) / 100)
                     else:
-                        click_x = int(prompt_x_pct)
+                        click_x = int(self.prompt_x_from_left)
 
-                    if '%' in prompt_y_pct:
-                        pixels_from_bottom = int(height * int(prompt_y_pct.rstrip('%')) / 100)
+                    if '%' in self.prompt_y_from_bottom:
+                        pixels_from_bottom = int(height * int(self.prompt_y_from_bottom.rstrip('%')) / 100)
                     else:
-                        pixels_from_bottom = int(prompt_y_pct)
+                        pixels_from_bottom = int(self.prompt_y_from_bottom)
                     click_y = height - pixels_from_bottom
 
                     # Get mouse
@@ -609,19 +574,17 @@ class BlitzControl(Gtk.Window):
                     saved_y = mouse_dict.get('Y')
                     if saved_x is None or saved_y is None:
                         raise RuntimeError("Could not parse mouse location")
-                    saved_x = int(float(saved_x))
-                    saved_y = int(float(saved_y))
+                    saved_x = int(saved_x)
+                    saved_y = int(saved_y)
 
                     # Move mouse
                     subprocess.run(['xdotool', 'mousemove', '--window', wid, str(click_x), str(click_y)])
 
+                    # Remove keep above so target comes to top
                     self.set_keep_above(False)
-                    # 3 scroll
+
+                    # 3 scrolls
                     for _ in range(3):
-                        # allow stop between scrolls
-                        self.imagine = load_env(IMAGINE_ENV, self.imagine)
-                        if self.imagine.get('FIRE_MODE', 'N') == 'N':
-                            break
                         subprocess.run(['xdotool', 'click', '4'])
 
                     # Focus click
@@ -630,40 +593,40 @@ class BlitzControl(Gtk.Window):
                     for j in range(1, burst + 1):
                         current_prompt = prompts[(j - 1) % len(prompts)]
 
-                        # NEW: '_' (or empty after strip) = fallback blank prompt
                         if not current_prompt.strip() or current_prompt.strip() == '_':
-                            current_prompt = 'system is king'
+                            current_prompt = ''
+                            subprocess.run(['xdotool', 'key', '--window', wid, 'ctrl+a', 'Del', 'Return'])
+                        else:
+                            subprocess.run(['xclip', '-selection', 'clipboard'], input=current_prompt.encode(), check=False)
+                            subprocess.run(['xdotool', 'key', '--window', wid, 'ctrl+a', 'ctrl+v', 'Return'])
 
-                        subprocess.run(['xclip', '-selection', 'clipboard'], input=current_prompt.encode(), check=False)
+                        time.sleep(self.shot_delay)
 
-                        subprocess.run(['xdotool', 'key', '--window', wid, 'ctrl+a', 'ctrl+v', 'Return'])
-                        time.sleep(shot_delay)
-
+                    # Raise panel
+                    self.set_keep_above(True)
                     # Restore mouse
                     subprocess.run(['xdotool', 'mousemove', str(saved_x), str(saved_y)])
 
                     total_shots += burst
                     GLib.idle_add(lambda r=round_num, s=total_shots: self.status_label.set_text(f"Round {r} - Shots {s}"))
-                    self.set_keep_above(True)
+                    # Check between windows
+                    if self.should_stop():
+                        break
 
                 except Exception as e:
                     print(f"[DAEMON] FAILED on {wid}: {e}")
                     continue
 
-            # check FIRE_MODE between rounds for responsiveness
-            self.imagine = load_env(IMAGINE_ENV, self.imagine)
-            if self.imagine.get('FIRE_MODE', 'N') == 'N':
+            # Check between rounds
+            if self.should_stop():
                 break
-
-            round_delay = float(self.system.get('ROUND_DELAY', 10.0))
-            #time.sleep(5)
-            GLib.timeout_add(int(round_delay * 1000), lambda: None or False)
+            time.sleep(5.0)
 
         GLib.idle_add(lambda: self.status_label.set_text("COMPLETE"))
         update_env(IMAGINE_ENV, 'FIRE_MODE', 'N')
 
     def on_fire(self, widget):
-        if self.imagine['FIRE_MODE'] == 'N':
+        if self.fire_mode == 'N':
             update_env(IMAGINE_ENV, 'FIRE_MODE', 'Y')
             self.daemon_thread = threading.Thread(target=self.daemon_thread_func, daemon=True)
             self.daemon_thread.start()
@@ -675,8 +638,10 @@ class BlitzControl(Gtk.Window):
             self.status_label.set_text("Stopped")
 
     def poll_fire_mode(self):
-        self.imagine = load_env(IMAGINE_ENV, self.imagine)
-        label = "STOP" if self.imagine.get('FIRE_MODE', 'N') == 'Y' else "FIRE"
+        if self.should_stop():
+            label = "FIRE"
+        else:
+            label = "STOP"
         if self.fire_btn.get_label() != label:
             self.fire_btn.set_label(label)
         return True
@@ -705,9 +670,9 @@ class BlitzControl(Gtk.Window):
             self.save_user()
 
     def on_quit(self, widget):
-        browser = self.system.get('BROWSER')
+        load_all_env(self)
         try:
-            subprocess.run(['pkill', browser], check=False)
+            subprocess.run(['pkill', self.browser], check=False)
         except:
             pass
 
@@ -715,7 +680,7 @@ class BlitzControl(Gtk.Window):
         script_dir = os.path.dirname(os.path.abspath(__file__))
 
         # File to remove (change name)
-        filename = self.live_windows  # NEW: uses configurable file name
+        filename = self.live_windows # NEW: uses configurable file name
         file_path = os.path.join(script_dir, filename)
 
         if os.path.exists(file_path):
