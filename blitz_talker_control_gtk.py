@@ -351,6 +351,11 @@ class BlitzControl(Gtk.Window):
         dialog.destroy()
 
     def on_stage(self, widget):
+        browser = self.system.get('BROWSER')
+        try:
+            subprocess.run(['pkill', browser], check=False)
+        except:
+            pass
         num = int(self.stage_spin.get_value())
         url_input = self.url_entry.get_text().strip()
         urls = get_urls_from_input(url_input)
