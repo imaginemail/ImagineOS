@@ -361,7 +361,6 @@ class BlitzControl(Gtk.Window):
         browser = self.system.get('BROWSER')
         cmd_base = [browser] + self.flags_head + self.flags_middle + self.flags_tail
 
-        stage_delay = float(self.system.get('STAGE_DELAY'))
 
         print(f"[STAGE] Launching {num} windows...")
         for i in range(num):
@@ -375,6 +374,9 @@ class BlitzControl(Gtk.Window):
                 subprocess.Popen(cmd)
             except Exception as e:
                 print(f"[STAGE] Failed to launch: {e}")
+        	stage_delay = float(self.system.get('STAGE_DELAY', 3.0))
+            GLib.timeout_add(int(stage_delay * 1000), lambda: None or False)
+
             time.sleep(stage_delay)
 
         grid_start_delay = int(self.system.get('GRID_START_DELAY'))
@@ -385,7 +387,6 @@ class BlitzControl(Gtk.Window):
         patterns_raw = self.system.get('WINDOW_PATTERNS', 'Imagine - Grok')
         patterns = [p.strip().strip('"').strip("'").lower() for p in patterns_raw.split(',') if p.strip()]
         max_tries = 30
-        sleep_between = int(self.system.get('GRID_START_DELAY'))
 
         last_total_windows = -1
         stagnant_limit = 3
@@ -440,7 +441,8 @@ class BlitzControl(Gtk.Window):
                     print("[GRID] Stagnant, no matches. Giving up.")
                 return False
 
-            time.sleep(sleep_between)
+        	sleep_between = float(self.system.get('GRID_START_DELAY', 10.0))
+            GLib.timeout_add(int(sleep_between * 1000), lambda: None or False)
 
         if last_matched:
             print("[GRID] Max tries reached. Gridding last matches.")
@@ -633,7 +635,7 @@ class BlitzControl(Gtk.Window):
                         subprocess.run(['xclip', '-selection', 'clipboard'], input=current_prompt.encode(), check=False)
 
                         subprocess.run(['xdotool', 'key', '--window', wid, 'ctrl+a', 'ctrl+v', 'Return'])
-                        time.sleep(shot_delay)
+                        GLib.timeout_add(int(shot_delay * 1000), lambda: None or False)
 
                     # Restore mouse
                     subprocess.run(['xdotool', 'mousemove', str(saved_x), str(saved_y)])
@@ -651,7 +653,8 @@ class BlitzControl(Gtk.Window):
             if self.imagine.get('FIRE_MODE', 'N') == 'N':
                 break
 
-            time.sleep(5)
+            round_delay = float(self.system.get('ROUND_DELAY', 10.0))
+            GLib.timeout_add(int(round_delay * 1000), lambda: None or False)
 
         GLib.idle_add(lambda: self.status_label.set_text("COMPLETE"))
         update_env(IMAGINE_ENV, 'FIRE_MODE', 'N')
