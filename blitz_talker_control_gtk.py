@@ -377,9 +377,7 @@ class BlitzControl(Gtk.Window):
         	stage_delay = float(self.system.get('STAGE_DELAY', 3.0))
             GLib.timeout_add(int(stage_delay * 1000), lambda: None or False)
 
-            time.sleep(stage_delay)
-
-        grid_start_delay = int(self.system.get('GRID_START_DELAY'))
+        grid_start_delay = float(self.system.get('GRID_START_DELAY', 10.0))
         print(f"[STAGE] Waiting {grid_start_delay}s before gridding")
         GLib.timeout_add_seconds(grid_start_delay, lambda: self.grid_windows(num) or False)
 
@@ -584,8 +582,8 @@ class BlitzControl(Gtk.Window):
                     geom_dict = _parse_shell_output(geom)
                     if 'WIDTH' not in geom_dict or 'HEIGHT' not in geom_dict:
                         raise RuntimeError("Could not parse window geometry")
-                    width = int(float(geom_dict['WIDTH']))
-                    height = int(float(geom_dict['HEIGHT']))
+                    width = int(geom_dict['WIDTH'])
+                    height = int(geom_dict['HEIGHT'])
 
                     # Click calc
                     if '%' in prompt_x_pct:
@@ -608,7 +606,6 @@ class BlitzControl(Gtk.Window):
                         raise RuntimeError("Could not parse mouse location")
                     saved_x = int(float(saved_x))
                     saved_y = int(float(saved_y))
-
 
                     # Move mouse
                     subprocess.run(['xdotool', 'mousemove', '--window', wid, str(click_x), str(click_y)])
