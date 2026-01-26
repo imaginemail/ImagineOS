@@ -2,7 +2,7 @@
 import subprocess
 import os
 import re
-import shlex # NEW: for precise flag splitting (preserves your deliberate spaces/no-spaces)
+import shlex
 import time
 import threading
 import gi
@@ -48,9 +48,9 @@ def load_flags(key):
     match = re.search(pattern, content)
     if match:
         val = match.group(1)
-        val = re.sub(r'\\\s*$', '', val) # NEW: strip trailing backslash (prevents dangling escape error)
-        val = re.sub(r'\\\s*\n\s*', ' ', val) # NEW: handle proper continuations
-        return shlex.split(val) # NEW: clean multiline (no \) works too — shlex treats \n as space
+        val = re.sub(r'\\\s*$', '', val)
+        val = re.sub(r'\\\s*\n\s*', ' ', val)
+        return shlex.split(val)
     return []
 
 def update_env(file, key, value):
@@ -92,12 +92,12 @@ def get_prompts_from_input(input_str):
             for line in f:
                 line = line.split('#', 1)[0].strip()
                 if line:
-                    prompts.append(line)  # keep empty lines as blank prompts
+                    prompts.append(line)
     else:
         if input_str:
             prompts = [input_str]
         else:
-            prompts = ['']  # ensure at least one blank
+            prompts = ['']
     return prompts
 
 def check_required_system_vars(system):
@@ -113,8 +113,8 @@ def load_all_env(self):
     self.flags_head = load_flags('BROWSER_FLAGS_HEAD')
     self.flags_middle = load_flags('BROWSER_FLAGS_MIDDLE')
     self.flags_tail = load_flags('BROWSER_FLAGS_TAIL')
-    self.live_windows = self.env['WINDOW_LIST']
-    # Multi PROMPT from user (overrides all)
+
+    # Multi PROMPT from user (overrides all) — optional
     collected_prompts = []
     if os.path.exists(USER_ENV):
         with open(USER_ENV, 'r') as f:
@@ -177,8 +177,7 @@ class BlitzControl(Gtk.Window):
         url_box.pack_start(url_label, False, False, 0)
         self.url_entry = Gtk.Entry()
         self.url_entry.set_hexpand(True)
-        self.url_entry.set_text(self.env['DEFAULT_URL'])
-        self.url_entry.connect("changed", lambda w: self.save_user())
+        self.url_entry.set_text(read_key(USER_ENV, 'DEFAULT_URL', ''))
         url_box.pack_start(self.url_entry, True, True, 0)
         pick_url_btn = Gtk.Button(label="Pick File")
         pick_url_btn.connect("clicked", self.on_pick_url_file)
@@ -290,7 +289,6 @@ class BlitzControl(Gtk.Window):
     def save_user(self):
         prompt_text = self.prompt_entry.get_text().strip()
         if not prompt_text.startswith("Multiple prompts"):
-            # clear old PROMPT lines, add new
             lines = []
             if os.path.exists(USER_ENV):
                 with open(USER_ENV, 'r') as f:
@@ -348,13 +346,13 @@ class BlitzControl(Gtk.Window):
             print("[STAGE] No URLs provided; aborting stage.")
             return
 
-        cmd_base = [self.browser] + self.flags_head + self.flags_middle + self.flags_tail
+        cmd_base = [read_key(SYSTEM_ENV, 'BROWSER')] + load_flags('BROWSER_FLAGS_HEAD') + load_flags('BROWSER_FLAGS_MIDDLE') + load_flags('BROWSER_FLAGS_TAIL')
 
         print(f"[STAGE] Launching {num} windows...")
         for i in range(num):
             url = urls[i % len(urls)]
             cmd = cmd_base + [url]
-            if self.flags_tail:
+            if load_flags('BROWSER_FLAGS_TAIL'):
                 cmd[-2] = cmd[-2] + cmd[-1]
                 cmd.pop()
             print(f"[STAGE] Launching: {' '.join(cmd)}")
