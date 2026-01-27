@@ -6,73 +6,55 @@
 BROWSER=chromium
 BROWSER_FLAGS_HEAD="
 --new-window \
---window-size=640,500 \
+--window-size=100,100 \
 "
 BROWSER_FLAGS_MIDDLE="
---aggressive-cache-discard \
---animation-duration-scale=0 \
---disable-features=BackForwardCache,CalculateNativeWinOcclusion,GlobalMediaControls,ImprovedCookieControls,InterestFeedContentSuggestions,PrivacySandboxSettings4,VizDisplayCompositor,Vulkan \
---disable-background-timer-throttling \
---disable-backgrounding-occluded-windows \
---disable-background-mode \
---disable-breakpad \
---disable-client-side-phishing-detection \
---disable-component-update \
---disable-default-apps \
---disable-domain-reliability \
---disable-extensions \
---disable-hang-monitor \
---disable-ipc-flooding-protection \
---disable-plugins \
---disable-print-preview \
---disable-renderer-backgrounding \
---disable-sync \
---force-color-profile=srgb \
---no-default-browser-check \
---no-first-run \
---no-pings \
---num-raster-threads=4 \
---use-gl=desktop \
---wm-window-animations-disabled \
 "
-BROWSER_FLAGS_TAIL=" "
+BROWSER_FLAGS_TAIL=" --app="
 # =============================================================================
 # DEFAULT CONTENT
 # =============================================================================
 DEFAULT_URL="https://grok.com/imagine/post/76448b44-e43f-4c3b-859f-1e74cd7a72f4"
 DEFAULT_PROMPT="system is king"
+BLANK_PROMPT=0
 # =============================================================================
 # TARGET WINDOW SETTINGS
 # =============================================================================
-WINDOW_PATTERNS='Untitled,Make your own video,Imagine - Grok'
-WINDOW_LIST='live_windows.txt'
+WINDOW_PATTERNS='Untitled,Make your own,Imagine - Grok'
+TARGET_PATTERN='Imagine - Grok'
 WINDOW_PATTERN='Imagine - Grok'
+WINDOW_LIST='live_windows.txt'
+STAGE_COUNT=24
+STAGE_DELAY=2.0
+GRID_START_DELAY=5
 DEFAULT_WIDTH=640
 DEFAULT_HEIGHT=500
 TARGET_DIR=.imagine_targets
-MAX_OVERLAP_PERCENT=25
+MAX_OVERLAP_PERCENT=40
 # =============================================================================
 # PROMPT INJECTION POSITION
 # =============================================================================
-PROMPT_X_FROM_LEFT="50%"
-PROMPT_Y_FROM_BOTTOM="130"
+PROMPT_X_FROM_LEFT="20%"
+PROMPT_Y_FROM_BOTTOM="25"
 # =============================================================================
 # FIRING BEHAVIOR
 # =============================================================================
 SHOT_DELAY=0.5
+BURST_DELAY=0.1
+INTER_WINDOW_DELAY=0.5
 ROUND_DELAY=10
-BURST_COUNT=4
+BURST_COUNT=1
 FIRE_COUNT=1
 # =============================================================================
 # PANEL SETTINGS
 # =============================================================================
 PANEL_DEFAULT_TITLE=".Blitz Talker."
-PANEL_DEFAULT_WIDTH=500
-PANEL_DEFAULT_HEIGHT=100
+PANEL_DEFAULT_WIDTH=10
+PANEL_DEFAULT_HEIGHT=10
 PANEL_DEFAULT_X_OFFSET=10
-PANEL_DEFAULT_Y_OFFSET=200
+PANEL_DEFAULT_Y_OFFSET=400
 # =============================================================================
 # MISC / DEBUG
 # =============================================================================
-DEBUG_DAEMON_ECHO=1
+DEBUG_DAEMON_ECHO=0
 SCREENSHOT_DIR=".screenshots"
