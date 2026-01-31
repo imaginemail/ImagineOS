@@ -5,7 +5,11 @@
 .setup_done*
 *.gxz
 *.ixz
+*.gxi
+*_not
+.debug/
 tmp/
+url_files/
 live_windows.txt
 
 # General editor backups
