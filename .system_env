@@ -1,5 +1,5 @@
 # .system_env - system defaults
-# Updated: 2026-01-17
+# Updated: 2026-01-31
 # =============================================================================
 # BROWSER CONFIGURATION
 # =============================================================================
@@ -26,6 +26,7 @@ WINDOW_PATTERN='Imagine - Grok'
 WINDOW_LIST='live_windows.txt'
 STAGE_COUNT=24
 STAGE_DELAY=2.0
+TARGET_OP_DELAY=0.25
 GRID_START_DELAY=5
 DEFAULT_WIDTH=640
 DEFAULT_HEIGHT=500

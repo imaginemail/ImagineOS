@@ -1,4 +1,21 @@
 #!/usr/bin/env python3
+
+"""
+# GROK_GENERIC_FORMATTING_INSTRUCTIONS
+#
+# Language-agnostic readability spacing (apply to Python, Bash, C/C++, JS, Java, etc.)
+# Rules (I will auto-detect language where possible):
+# - Exactly one blank line before every standalone comment (or comment block)
+# - Exactly one blank line before every function/method/class/struct definition
+# - Exactly one blank line after major block closers (e.g., } in C++/JS, fi/done in Bash, end in Python if needed)
+# - Collapse any double (or more) blank lines into one
+# - In UI/setup code (e.g., GTK, main(), setup()), add one blank after logical groups (widget rows, cases, etc.)
+# - Preserve all code, indentation, inline comments, and logic unchanged
+# - No other changes (no style fixes beyond spacing)
+#
+# Optional hint: Add "# Language: Python" or "# Language: Bash" on next line if auto-detect fails.
+"""
+
 import subprocess
 import os
 import re
@@ -215,20 +232,6 @@ def get_prompts_from_input(input_str):
     return prompts
 
 # -------------------------
-# BLANK_PROMPT helper
-# -------------------------
-
-def get_blank_prompt_mode():
-    """
-    Read BLANK_PROMPT mode using merged read semantics.
-    Returns integer 0 or 1. Raises if not set.
-    """
-    val = read_merged_key('BLANK_PROMPT')
-    if val is None:
-        raise RuntimeError("Configuration error: BLANK_PROMPT not set in any env file.")
-    return 1 if str(val).strip() == '1' else 0
-
-# -------------------------
 # Configuration validation
 # -------------------------
 
@@ -253,6 +256,7 @@ def validate_config():
         'ROUND_DELAY': 'float',
         'BURST_DELAY': 'float',
         'INTER_WINDOW_DELAY': 'float',
+        'TARGET_OP_DELAY': 'float',
         'PANEL_DEFAULT_TITLE': 'str',
         'PANEL_DEFAULT_WIDTH': 'int',
         'PANEL_DEFAULT_HEIGHT': 'int',
@@ -261,7 +265,6 @@ def validate_config():
         'STAGE_COUNT': 'int',
         'BURST_COUNT': 'int',
         'FIRE_COUNT': 'int',
-        'BLANK_PROMPT': 'int',
         'FIRE_MODE': 'str',
         'DEBUG_DAEMON_ECHO': 'int',
         'PROMPT_X_FROM_LEFT': 'str',
@@ -326,21 +329,25 @@ class BlitzControl(Gtk.Window):
         super().__init__(title=".Blitz Talker.")
         self.set_keep_above(True)
         self.set_border_width(4)
-        self.set_resizable(True)  # Allow user mouse resize
+        self.set_resizable(True) # Allow user mouse resize
+
         # Force safe start state (we still update the env file but only if it exists)
         if os.path.exists(IMAGINE_ENV):
             update_env(IMAGINE_ENV, 'FIRE_MODE', 'N')
+
         # Apply panel settings (read via merged keys; validate_config ensures presence)
         panel_title = read_merged_key('PANEL_DEFAULT_TITLE')
         panel_w = int(read_merged_key('PANEL_DEFAULT_WIDTH'))
         panel_h = int(read_merged_key('PANEL_DEFAULT_HEIGHT'))
         self.set_title(panel_title)
-        self.set_default_size(panel_w, panel_h)  # Initial size from config
+        self.set_default_size(panel_w, panel_h) # Initial size from config
+
         try:
             output = subprocess.check_output(['xdotool', 'getdisplaygeometry']).decode().strip()
             sw, sh = map(int, output.split())
         except Exception:
             sw, sh = 1920, 1080
+
         pos_x = sw - panel_w - int(read_merged_key('PANEL_DEFAULT_X_OFFSET'))
         pos_y = sh - panel_h - int(read_merged_key('PANEL_DEFAULT_Y_OFFSET'))
         if pos_x < 0: pos_x = 0
@@ -349,40 +356,52 @@ class BlitzControl(Gtk.Window):
 
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         self.add(box)
+
         # URL row: scrolled entry to prevent long URLs from forcing width
         url_box = Gtk.Box(spacing=2)
         box.pack_start(url_box, False, False, 0)
+
         url_label = Gtk.Label(label="Target URL(s):")
         url_label.set_size_request(60, -1)
         url_box.pack_start(url_label, False, False, 0)
+
         url_scroll = Gtk.ScrolledWindow()
         url_scroll.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.NEVER)
         url_scroll.set_hexpand(False)
+
         self.url_entry = Gtk.Entry()
         self.url_entry.set_hexpand(True)
+
         # MERGED READ: prefer the last defined value across system, imagine, user
         merged_url = read_merged_key('DEFAULT_URL')
         if merged_url is None:
             raise RuntimeError("Configuration error: DEFAULT_URL not set in any env file.")
         self.url_entry.set_text(merged_url)
+
         url_scroll.add(self.url_entry)
         url_box.pack_start(url_scroll, True, True, 0)
+
         pick_url_btn = Gtk.Button(label="Pick File")
         pick_url_btn.connect("clicked", self.on_pick_url_file)
         url_box.pack_start(pick_url_btn, False, False, 0)
+
         # Prompt row: TextView in scrolled window for wrapping + expand
         prompt_box = Gtk.Box(spacing=2)
         box.pack_start(prompt_box, True, True, 0)
+
         prompt_label = Gtk.Label(label="Prompt(s):")
         prompt_label.set_size_request(60, -1)
         prompt_box.pack_start(prompt_label, False, False, 0)
+
         prompt_scroll = Gtk.ScrolledWindow()
         prompt_scroll.set_hexpand(False)
         prompt_scroll.set_vexpand(True)
         prompt_scroll.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+
         self.prompt_view = Gtk.TextView()
         self.prompt_view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
         self.prompt_buffer = self.prompt_view.get_buffer()
+
         prompts = choose_prompts()
         prompt_text = '\n'.join(prompts) if prompts else ''
         if not prompt_text.strip():
@@ -391,8 +410,10 @@ class BlitzControl(Gtk.Window):
                 raise RuntimeError("Configuration error: DEFAULT_PROMPT not set in any env file.")
             prompt_text = merged_prompt
         self.prompt_buffer.set_text(prompt_text)
+
         prompt_scroll.add(self.prompt_view)
         prompt_box.pack_start(prompt_scroll, True, True, 0)
+
         pick_prompt_btn = Gtk.Button(label="Pick File")
         pick_prompt_btn.connect("clicked", self.on_pick_prompt_file)
         prompt_box.pack_start(pick_prompt_btn, False, False, 0)
@@ -405,6 +426,7 @@ class BlitzControl(Gtk.Window):
         burst_hbox = Gtk.Box(spacing=2)
         burst_label = Gtk.Label(label="Burst:")
         burst_hbox.pack_start(burst_label, False, False, 0)
+
         burst_adj = Gtk.Adjustment(value=int(read_merged_key('BURST_COUNT')), lower=1, upper=200, step_increment=1)
         self.burst_spin = Gtk.SpinButton(adjustment=burst_adj)
         burst_hbox.pack_start(self.burst_spin, True, True, 0)
@@ -414,6 +436,7 @@ class BlitzControl(Gtk.Window):
         fire_hbox = Gtk.Box(spacing=2)
         fire_label = Gtk.Label(label="Rounds:")
         fire_hbox.pack_start(fire_label, False, False, 0)
+
         fire_adj = Gtk.Adjustment(value=int(read_merged_key('FIRE_COUNT')), lower=1, upper=999, step_increment=1)
         self.fire_spin = Gtk.SpinButton(adjustment=fire_adj)
         fire_hbox.pack_start(self.fire_spin, True, True, 0)
@@ -423,6 +446,7 @@ class BlitzControl(Gtk.Window):
         stage_hbox = Gtk.Box(spacing=2)
         stage_label = Gtk.Label(label="Targets:")
         stage_hbox.pack_start(stage_label, False, False, 0)
+
         stage_adj = Gtk.Adjustment(value=int(read_merged_key('STAGE_COUNT')), lower=1, upper=2000, step_increment=1)
         self.stage_spin = Gtk.SpinButton(adjustment=stage_adj)
         stage_hbox.pack_start(self.stage_spin, True, True, 0)
@@ -451,6 +475,7 @@ class BlitzControl(Gtk.Window):
         btn_box.pack_start(quit_btn, False, False, 0)
 
         self.daemon_thread = None
+
         # Minimize buttons
         css_provider = Gtk.CssProvider()
         css_provider.load_from_data(b"""
@@ -495,6 +520,7 @@ class BlitzControl(Gtk.Window):
         # Ensure snapshot exists
         if not hasattr(self, '_loaded_snapshot'):
             raise RuntimeError("Internal error: loaded snapshot missing; cannot save safely.")
+
         # Current UI values
         current_url = self.url_entry.get_text()
         start_iter, end_iter = self.prompt_buffer.get_bounds()
@@ -502,10 +528,12 @@ class BlitzControl(Gtk.Window):
         current_burst = str(int(self.burst_spin.get_value()))
         current_fire = str(int(self.fire_spin.get_value()))
         current_stage = str(int(self.stage_spin.get_value()))
+
         # Helper to read system value (explicitly from SYSTEM_ENV only)
         def system_val(key):
             v = read_key(SYSTEM_ENV, key, None)
             return v
+
         # --- PROMPTS handling (user_env PROMPT= lines) ---
         if current_prompts != self._loaded_snapshot.get('PROMPTS', ''):
             # If changed vs snapshot, decide whether to write overrides
@@ -514,9 +542,11 @@ class BlitzControl(Gtk.Window):
             sys_default = system_val('DEFAULT_PROMPT')
             if sys_default is not None and str(sys_default).strip() != '':
                 sys_prompts = [_unquote_one_line(sys_default)]
+
             ui_lines = current_prompts.splitlines()
             ui_join = '\n'.join(ui_lines)
             sys_join = '\n'.join(sys_prompts) if sys_prompts else ''
+
             if ui_join == sys_join:
                 # Remove any PROMPT= lines from .user_env if they exist (we want no override)
                 if os.path.exists(USER_ENV):
@@ -535,6 +565,7 @@ class BlitzControl(Gtk.Window):
                         for line in f:
                             if not line.strip().startswith('PROMPT='):
                                 lines.append(line)
+
                 if len(ui_lines) == 0:
                     lines.append('PROMPT=""\n')
                 else:
@@ -544,8 +575,10 @@ class BlitzControl(Gtk.Window):
                             lines.append('PROMPT=""\n')
                         else:
                             lines.append(f'PROMPT="{_escape_for_env(p)}"\n')
+
                 with open(USER_ENV, 'w', encoding='utf-8') as f:
                     f.writelines(lines)
+
         # --- DEFAULT_URL and STAGE_COUNT to .user_env ---
         sys_url = system_val('DEFAULT_URL')
         if current_url != self._loaded_snapshot.get('DEFAULT_URL', ''):
@@ -561,6 +594,7 @@ class BlitzControl(Gtk.Window):
                                 lines.append(line)
                     with open(USER_ENV, 'w', encoding='utf-8') as f:
                         f.writelines(lines)
+
         sys_stage = system_val('STAGE_COUNT')
         if current_stage != self._loaded_snapshot.get('STAGE_COUNT', ''):
             if sys_stage is None or current_stage != sys_stage:
@@ -574,6 +608,7 @@ class BlitzControl(Gtk.Window):
                                 lines.append(line)
                     with open(USER_ENV, 'w', encoding='utf-8') as f:
                         f.writelines(lines)
+
         # --- BURST_COUNT and FIRE_COUNT to .imagine_env ---
         sys_burst = system_val('BURST_COUNT')
         if current_burst != self._loaded_snapshot.get('BURST_COUNT', ''):
@@ -588,6 +623,7 @@ class BlitzControl(Gtk.Window):
                                 lines.append(line)
                     with open(IMAGINE_ENV, 'w', encoding='utf-8') as f:
                         f.writelines(lines)
+
         sys_fire = system_val('FIRE_COUNT')
         if current_fire != self._loaded_snapshot.get('FIRE_COUNT', ''):
             if sys_fire is None or current_fire != sys_fire:
@@ -601,6 +637,7 @@ class BlitzControl(Gtk.Window):
                                 lines.append(line)
                     with open(IMAGINE_ENV, 'w', encoding='utf-8') as f:
                         f.writelines(lines)
+
         # After successful writes, update the snapshot to current values
         self._loaded_snapshot.update({
             'DEFAULT_URL': current_url,
@@ -614,6 +651,7 @@ class BlitzControl(Gtk.Window):
         self.save_all()
         dialog = Gtk.FileChooserDialog(title="Pick URL File", parent=self, action=Gtk.FileChooserAction.OPEN)
         dialog.add_buttons(Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL, Gtk.STOCK_OPEN, Gtk.ResponseType.OK)
+
         filter_text = Gtk.FileFilter()
         filter_text.set_name("Text files")
         filter_text.add_mime_type("text/plain")
@@ -630,6 +668,7 @@ class BlitzControl(Gtk.Window):
         self.save_all()
         dialog = Gtk.FileChooserDialog(title="Pick Prompt File", parent=self, action=Gtk.FileChooserAction.OPEN)
         dialog.add_buttons(Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL, Gtk.STOCK_OPEN, Gtk.ResponseType.OK)
+
         filter_text = Gtk.FileFilter()
         filter_text.set_name("Text files")
         filter_text.add_mime_type("text/plain")
@@ -646,10 +685,39 @@ class BlitzControl(Gtk.Window):
 
     def on_stage(self, widget):
         self.save_all()
+        self.status_label.set_text("Staging windows...")
+
+        # Cache repeated delay values once at the start of staging
+        stage_delay = float(read_merged_key('STAGE_DELAY'))
+        grid_start_delay = float(read_merged_key('GRID_START_DELAY'))
 
         # Kill old target windows
+        target = read_merged_key('BROWSER')
+
+        # --- DEBUG INSERT ---
+        #debug = int(read_merged_key('DEBUG_DAEMON_ECHO'))
+        debug = 0
+        if debug:
+            direct_browser = read_key(SYSTEM_ENV, 'BROWSER', '(not set in .system_env)')
+            msg = (
+                f"Killing old browser windows...\n\n"
+                f"Merged BROWSER key value (target): {target}\n"
+                f"Direct from .system_env: {direct_browser}"
+            )
+            subprocess.call([
+                'gxmessage', msg,
+                '-title', 'Kill Old Windows - Browser Debug',
+                '-center',
+                '-buttons', 'OK:0'
+            ])
+            # --- END DEBUG INSERT ---
+
+        file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), read_merged_key('WINDOW_LIST'))
+        if os.path.exists(file_path):
+            self.gentle_target_op('kill', sync=True)
+
         try:
-            subprocess.run(['pkill', read_merged_key('BROWSER')], check=False)
+            subprocess.run(['pkill', '-f', target], check=False)
         except Exception:
             pass
 
@@ -657,28 +725,35 @@ class BlitzControl(Gtk.Window):
         file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), read_merged_key('WINDOW_LIST'))
         if os.path.exists(file_path):
             os.remove(file_path)
+
         num = int(read_merged_key('STAGE_COUNT'))
         url_input = read_merged_key('DEFAULT_URL')
         urls = get_urls_from_input(url_input)
+
         if not urls:
-            print("[STAGE] No URLs provided; aborting stage.")
+            msg = "No URLs provided for staging."
+            subprocess.call(['gxmessage', msg, '-title', 'Stage Error', '-center', '-buttons', 'OK:0'])
+            self.status_label.set_text("Ready")
             return
+
         cmd_base = [read_merged_key('BROWSER')] + load_flags('BROWSER_FLAGS_HEAD') + load_flags('BROWSER_FLAGS_MIDDLE') + load_flags('BROWSER_FLAGS_TAIL')
-        print(f"[STAGE] Launching {num} windows...")
+
         for i in range(num):
             url = urls[i % len(urls)]
             cmd = cmd_base + [url]
             if load_flags('BROWSER_FLAGS_TAIL'):
                 cmd[-2] = cmd[-2] + cmd[-1]
                 cmd.pop()
-            print(f"[STAGE] Launching: {' '.join(cmd)}")
             try:
-                subprocess.Popen(cmd)
+                subprocess.Popen(cmd, stderr=subprocess.DEVNULL)
             except Exception as e:
-                print(f"[STAGE] Failed to launch: {e}")
-            time.sleep(float(read_merged_key('STAGE_DELAY')))
-        print(f"[STAGE] Waiting {read_merged_key('GRID_START_DELAY')}s before gridding")
-        GLib.timeout_add(int(float(read_merged_key('GRID_START_DELAY')) * 1000), lambda: self.grid_windows(num) or False)
+                cmd_str = ' '.join(shlex.quote(p) for p in cmd)
+                msg = f"Failed to launch browser window:\n\nCommand: {cmd_str}\n\nError: {e}"
+                subprocess.call(['gxmessage', msg, '-title', 'Launch Error', '-center', '-buttons', 'OK:0'])
+
+            time.sleep(stage_delay)
+
+        GLib.timeout_add(int(grid_start_delay * 1000), lambda: self.grid_windows(num) or False)
 
     def on_fire(self, widget):
         self.save_all()
@@ -721,37 +796,38 @@ class BlitzControl(Gtk.Window):
 
     def on_quit(self, widget):
         self.save_all()
+        target = read_merged_key('BROWSER')
+
+        file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), read_merged_key('WINDOW_LIST'))
+        if os.path.exists(file_path):
+            self.gentle_target_op('kill', sync=True)
+
         try:
-            subprocess.run(['pkill', read_merged_key('BROWSER')], check=False)
+            subprocess.run(['pkill', '-f', target], check=False)
         except Exception:
             pass
+
         file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), read_merged_key('WINDOW_LIST'))
         if os.path.exists(file_path):
             os.remove(file_path)
+
         Gtk.main_quit()
 
     def grid_windows(self, expected_num):
-        debug = read_merged_key('DEBUG_DAEMON_ECHO') == '1'
-
         patterns = [p.strip().strip('"').strip("'").lower() for p in read_merged_key('WINDOW_PATTERNS').split(',') if p.strip()]
+
+        # Cache the repeated delay value once at the start of gridding
+        grid_start_delay = float(read_merged_key('GRID_START_DELAY'))
+
         max_tries = 30
         last_total_windows = -1
         stagnant_limit = 3
         stagnant_count = 0
         last_matched = []
 
-        print(f"[GRID] Waiting for up to {expected_num} windows matching any of {patterns}")
         for attempt in range(1, max_tries + 1):
-            print(f"\n[GRID] Attempt {attempt}/{max_tries}")
-            if debug:
-                print("[XDOTOOL] Running: xdotool search --onlyvisible .")
             result = subprocess.run(['xdotool', 'search', '--onlyvisible', '.'], capture_output=True, text=True)
-            if debug:
-                print(f"[XDOTOOL] stdout: {result.stdout.strip()}")
-                print(f"[XDOTOOL] stderr: {result.stderr.strip()}")
-                print(f"[XDOTOOL] returncode: {result.returncode}")
             all_ids = result.stdout.strip().splitlines() if result.returncode == 0 else []
-            print(f"[GRID] Visible windows: {len(all_ids)}")
 
             if len(all_ids) == last_total_windows:
                 stagnant_count += 1
@@ -761,56 +837,44 @@ class BlitzControl(Gtk.Window):
 
             matched = []
             for wid in all_ids:
-                if debug:
-                    print(f"[XDOTOOL] Running: xdotool getwindowname {wid}")
                 result = subprocess.run(['xdotool', 'getwindowname', wid], capture_output=True, text=True)
-                if debug:
-                    print(f"[XDOTOOL] stdout: {result.stdout.strip()}")
-                    print(f"[XDOTOOL] stderr: {result.stderr.strip()}")
-                    print(f"[XDOTOOL] returncode: {result.returncode}")
                 name = result.stdout.strip().lower()
                 if any(p in name for p in patterns):
                     matched.append(wid)
-
-            print(f"[GRID] Matching windows: {len(matched)}")
 
             if matched:
                 last_matched = matched[:]
 
             if len(matched) >= expected_num:
-                print("[GRID] Enough matches found. Gridding.")
                 self._grid_ids(matched)
+                self.status_label.set_text("Ready")
                 return False
 
             if stagnant_count >= stagnant_limit:
                 if last_matched:
-                    print("[GRID] Stagnant but matches exist. Gridding what we have.")
                     self._grid_ids(last_matched)
-                else:
-                    print("[GRID] Stagnant, no matches. Giving up.")
+                self.status_label.set_text("Ready")
                 return False
-            time.sleep(float(read_merged_key('GRID_START_DELAY')))
+
+            time.sleep(grid_start_delay)
+
         if last_matched:
-            print("[GRID] Max tries reached. Gridding last matches.")
             self._grid_ids(last_matched)
-        else:
-            print("[GRID] Max tries reached, no matches.")
+        self.status_label.set_text("Ready")
         return False
 
     def _grid_ids(self, ids):
-        debug = read_merged_key('DEBUG_DAEMON_ECHO') == '1'
-        if debug:
-            print("[XDOTOOL] Running: xdotool getdisplaygeometry")
         result = subprocess.run(['xdotool', 'getdisplaygeometry'], capture_output=True, text=True)
-        if debug:
-            print(f"[XDOTOOL] stdout: {result.stdout.strip()}")
-            print(f"[XDOTOOL] stderr: {result.stderr.strip()}")
-            print(f"[XDOTOOL] returncode: {result.returncode}")
         try:
             screen = result.stdout.strip().split()
             sw, sh = int(screen[0]), int(screen[1])
         except:
             sw, sh = 1920, 1080
+
+        # Cache target sizing values once at the start of gridding
+        target_width = int(read_merged_key('DEFAULT_WIDTH'))
+        target_height = int(read_merged_key('DEFAULT_HEIGHT'))
+        target_overlap = int(read_merged_key('MAX_OVERLAP_PERCENT'))
 
         margin = 20
         available_width = sw - 2 * margin
@@ -819,8 +883,10 @@ class BlitzControl(Gtk.Window):
         n = len(ids)
         if n == 0:
             return
-        effective_step = max(1, int(int(read_merged_key('DEFAULT_WIDTH')) * (100 - int(read_merged_key('MAX_OVERLAP_PERCENT'))) / 100))
-        max_cols_by_width = 1 + (available_width - int(read_merged_key('DEFAULT_WIDTH'))) // effective_step if available_width >= int(read_merged_key('DEFAULT_WIDTH')) else 1
+
+        effective_step = max(1, int(target_width * (100 - target_overlap) / 100))
+        max_cols_by_width = 1 + (available_width - target_width) // effective_step if available_width >= target_width else 1
+
         desired_rows = 2
         desired_cols = (n + desired_rows - 1) // desired_rows
 
@@ -833,31 +899,34 @@ class BlitzControl(Gtk.Window):
 
         if cols == 1:
             step_x = 0
-            total_grid_width = int(read_merged_key('DEFAULT_WIDTH'))
+            total_grid_width = target_width
         else:
-            min_total_width = int(read_merged_key('DEFAULT_WIDTH')) + (cols - 1) * effective_step
+            min_total_width = target_width + (cols - 1) * effective_step
             if min_total_width <= available_width:
-                extra_space = available_width - int(read_merged_key('DEFAULT_WIDTH'))
+                extra_space = available_width - target_width
                 step_x = extra_space // (cols - 1)
                 if step_x < effective_step:
                     step_x = effective_step
             else:
-                step_x = max(1, (available_width - int(read_merged_key('DEFAULT_WIDTH'))) // (cols - 1))
-            total_grid_width = int(read_merged_key('DEFAULT_WIDTH')) + (cols - 1) * step_x
-        vertical_effective_step = max(1, int(int(read_merged_key('DEFAULT_HEIGHT')) * (100 - int(read_merged_key('MAX_OVERLAP_PERCENT'))) / 100))
+                step_x = max(1, (available_width - target_width) // (cols - 1))
+            total_grid_width = target_width + (cols - 1) * step_x
+
+        vertical_effective_step = max(1, int(target_height * (100 - target_overlap) / 100))
         if rows == 1:
             step_y = 0
         else:
-            min_total_height = int(read_merged_key('DEFAULT_HEIGHT')) + (rows - 1) * vertical_effective_step
+            min_total_height = target_height + (rows - 1) * vertical_effective_step
             if min_total_height <= available_height:
-                extra_vspace = available_height - int(read_merged_key('DEFAULT_HEIGHT'))
+                extra_vspace = available_height - target_height
                 step_y = extra_vspace // (rows - 1)
                 if step_y < vertical_effective_step:
                     step_y = vertical_effective_step
             else:
-                step_y = max(1, (available_height - (int(read_merged_key('DEFAULT_HEIGHT')))) // (rows - 1))
+                step_y = max(1, (available_height - target_height) // (rows - 1))
+
         x_start = margin + max(0, (available_width - total_grid_width) // 2)
-        y_start = margin + max(0, (available_height - (int(read_merged_key('DEFAULT_HEIGHT')) + (rows - 1) * step_y)) // 2)
+        y_start = margin + max(0, (available_height - (target_height + (rows - 1) * step_y)) // 2)
+
         list_path = read_merged_key('WINDOW_LIST')
         with open(list_path, 'w', encoding='utf-8') as f:
             for idx, wid in enumerate(ids):
@@ -866,49 +935,83 @@ class BlitzControl(Gtk.Window):
                 x = int(x_start + c * step_x)
                 y = int(y_start + r * step_y)
                 try:
-                    cmd = ['xdotool', 'windowsize', wid, read_merged_key('DEFAULT_WIDTH'), read_merged_key('DEFAULT_HEIGHT')]
-                    if debug:
-                        print(f"[XDOTOOL] Running: {' '.join(shlex.quote(p) for p in cmd)}")
+                    cmd = ['xdotool', 'windowsize', wid, str(target_width), str(target_height)]
                     subprocess.run(cmd, capture_output=True, text=True)
                     move_cmd = ['xdotool', 'windowmove', wid, str(x), str(y)]
-                    if debug:
-                        print(f"[XDOTOOL] Running: {' '.join(shlex.quote(p) for p in move_cmd)}")
                     subprocess.run(move_cmd, capture_output=True, text=True)
                 except Exception as e:
-                    print(f"[GRID] Failed on {wid}: {e}")
+                    msg = f"Failed to size/move window {wid}:\n\nError: {e}"
+                    subprocess.call(['gxmessage', msg, '-title', 'Grid Error', '-center', '-buttons', 'OK:0'])
                 f.write(wid + '\n')
-        # atomic replace not necessary here because we write directly to the path used elsewhere
-        self.activate_windows_from_list(list_path, delay=0)
+        self.gentle_target_op('activate', sync=True)
 
-    def activate_windows_from_list(self, file_path, delay=1.0):
-        debug = read_merged_key('DEBUG_DAEMON_ECHO') == '1'
-        file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), file_path) if not os.path.isabs(file_path) else file_path
+    def gentle_target_op(self, op_type, sync=True, delay=None):
+        """
+        Unified window operation: activate or kill windows from list.
+        op_type: 'activate' or 'kill'
+        sync: True/False for --sync on activate
+        delay: optional float; if None, uses TARGET_OP_DELAY from config (fallback 1.0)
+        """
+        if delay is None:
+            delay_val = read_merged_key('TARGET_OP_DELAY')
+            delay = float(delay_val) if delay_val is not None else 1.0
+
+        file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), read_merged_key('WINDOW_LIST'))
         if not os.path.exists(file_path):
-            print(f"[ERROR] File not found: {file_path}")
+            msg = f"Window list file not found:\n\n{file_path}"
+            subprocess.call(['gxmessage', msg, '-title', 'Target Op Error', '-center', '-buttons', 'OK:0'])
             return
+
         with open(file_path, 'r', encoding='utf-8') as f:
             window_ids = [line.strip() for line in f if line.strip()]
+
         if not window_ids:
-            print("[INFO] No window IDs found in file.")
             return
-        print(f"[ACTIVATE] Activating {len(window_ids)} windows with {delay}s delay...")
+
         for wid in window_ids:
-            act_cmd = ['xdotool', 'windowactivate', '--sync', wid]
-            if debug:
-                print(f"[XDOTOOL] Running: {' '.join(shlex.quote(p) for p in act_cmd)}")
-            result = subprocess.run(act_cmd, capture_output=True, text=True)
-            if debug:
-                print(f"[XDOTOOL] stdout: {result.stdout.strip()}")
-                print(f"[XDOTOOL] stderr: {result.stderr.strip()}")
-                print(f"[XDOTOOL] returncode: {result.returncode}")
-            print(f"[ACTIVATE] Activated window {wid}")
+            # Always activate first (with optional sync)
+            sync_flag = '--sync' if sync else ''
+            act_cmd = ['xdotool', 'windowactivate', sync_flag, wid]
+            subprocess.run(act_cmd, capture_output=True, text=True)
+
+            if op_type == 'kill':
+                close_cmd = ['xdotool', 'key', '--clearmodifiers', 'alt+F4']
+                result = subprocess.run(close_cmd, capture_output=True, text=True)
+                if result.returncode != 0:
+                    cmd_str = ' '.join(shlex.quote(p) for p in close_cmd)
+                    msg = (
+                        f"Failed to close window {wid}\n\n"
+                        f"Command executed:\n{cmd_str}\n\n"
+                        f"Return code: {result.returncode}\n"
+                        f"stdout:\n{result.stdout.strip() or '(empty)'}\n\n"
+                        f"stderr:\n{result.stderr.strip() or '(empty)'}\n\n"
+                        "Window may still be open."
+                    )
+                    subprocess.call(['gxmessage', msg, '-title', 'xdotool Close Failure',
+                                    '-timeout', '10', '-center', '-buttons', 'OK:0'])
+
             time.sleep(delay)
-        print("[ACTIVATE] Done.")
 
     def daemon_thread_func(self):
         total_shots = 0
-        debug = read_merged_key('DEBUG_DAEMON_ECHO') == '1'
-        blank_prompt_toggle = get_blank_prompt_mode()
+        fire_count = int(read_merged_key('FIRE_COUNT'))
+
+        # Cache repeated values once at the start of the daemon
+        round_delay = float(read_merged_key('ROUND_DELAY'))
+        burst_count = int(read_merged_key('BURST_COUNT'))
+        burst_delay_val = read_merged_key('BURST_DELAY')
+        burst_delay = float(burst_delay_val) if burst_delay_val else 0.05
+        target_op_delay_val = read_merged_key('TARGET_OP_DELAY')
+        target_op_delay = float(target_op_delay_val) if target_op_delay_val else 0.1
+        inter_window_delay_val = read_merged_key('INTER_WINDOW_DELAY')
+        inter_window_delay = float(inter_window_delay_val) if inter_window_delay_val else 0.0
+        shot_delay_val = read_merged_key('SHOT_DELAY')
+        shot_delay = float(shot_delay_val) if shot_delay_val else 0.0
+        prompt_x_from_left = read_merged_key('PROMPT_X_FROM_LEFT') or '50%'
+        prompt_y_from_bottom = read_merged_key('PROMPT_Y_FROM_BOTTOM') or '10%'
+
+        self.gentle_target_op('activate', sync=True)
+
         def _parse_shell_output(text):
             d = {}
             for line in text.splitlines():
@@ -924,19 +1027,25 @@ class BlitzControl(Gtk.Window):
                 d[k.strip().upper()] = v.strip()
             return d
 
+        def update_status(text):
+            GLib.idle_add(lambda: self.status_label.set_text(text) or False)
+
+        update_status("Firing... 0 shots")
+
         # Read window list path and ensure it's absolute
         live_windows_file = read_merged_key('WINDOW_LIST')
         if not live_windows_file:
-            print("[DAEMON] No WINDOW_LIST configured; aborting daemon.")
+            msg = "No WINDOW_LIST configured; aborting daemon."
+            subprocess.call(['gxmessage', msg, '-title', 'Daemon Error', '-center', '-buttons', 'OK:0'])
+            update_status("Ready")
             return
+
         live_windows_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), live_windows_file) if not os.path.isabs(live_windows_file) else live_windows_file
 
-        for round_num in range(1, int(read_merged_key('FIRE_COUNT')) + 1):
-            if read_merged_key('FIRE_MODE') == 'N':
-                break
-
+        for round_num in range(1, fire_count + 1):
             if round_num > 1:
-                time.sleep(float(read_merged_key('ROUND_DELAY')))
+                time.sleep(round_delay)
+
             if not os.path.exists(live_windows_file) or os.stat(live_windows_file).st_size == 0:
                 continue
 
@@ -947,244 +1056,196 @@ class BlitzControl(Gtk.Window):
             if not prompts or all(not p.strip() for p in prompts):
                 default_prompt = read_merged_key('DEFAULT_PROMPT')
                 if default_prompt:
-                    prompts = [ _unquote_one_line(default_prompt) ]
+                    prompts = [_unquote_one_line(default_prompt)]
+
             if not prompts:
-                print("[DAEMON] No prompts available; skipping round.")
                 continue
 
-            burst = int(read_merged_key('BURST_COUNT'))
-
             for idx, wid in enumerate(window_ids, start=1):
-                if debug:
-                    print(f"[DAEMON] Processing window {idx} of {len(window_ids)} (ID: {wid})")
-                try:
+                if read_merged_key('FIRE_MODE') == 'N':
+                    break
 
+                try:
                     # Save mouse
                     mouse_cmd = ['xdotool', 'getmouselocation', '--shell']
-                    if debug:
-                        print(f"[XDOTOOL] Running: {' '.join(shlex.quote(p) for p in mouse_cmd)} (save mouse)")
                     result = subprocess.run(mouse_cmd, capture_output=True, text=True)
-                    if debug:
-                        print(f"[XDOTOOL] stdout: {result.stdout.strip()}")
-                        print(f"[XDOTOOL] stderr: {result.stderr.strip()}")
-                        print(f"[XDOTOOL] returncode: {result.returncode}")
                     mouse_dict = _parse_shell_output(result.stdout)
-                    saved_x = int(mouse_dict.get('X', 0))
-                    saved_y = int(mouse_dict.get('Y', 0))
-                    if debug:
-                        print(f"[MOUSE] Saved position: X={saved_x}, Y={saved_y}")
 
-                    # Activate window (no --clearmodifiers here; many xdotool builds don't accept it)
-                    act_cmd = ['xdotool', 'windowactivate', '--sync', wid]
-                    if debug:
-                        print(f"[XDOTOOL] Running: {' '.join(shlex.quote(p) for p in act_cmd)}")
-                    result = subprocess.run(act_cmd, capture_output=True, text=True)
-                    if debug:
-                        print(f"[XDOTOOL] stdout: {result.stdout.strip()}")
-                        print(f"[XDOTOOL] stderr: {result.stderr.strip()}")
-                        print(f"[XDOTOOL] returncode: {result.returncode}")
+                    if (result.returncode != 0 or
+                        not mouse_dict or
+                        'X' not in mouse_dict or
+                        'Y' not in mouse_dict):
+                        cmd_str = ' '.join(shlex.quote(p) for p in mouse_cmd)
+                        msg = (
+                            f"ERROR: Failed to get mouse location for window ID {wid}\n\n"
+                            f"Command executed:\n{cmd_str}\n\n"
+                            f"Return code: {result.returncode}\n"
+                            f"stdout:\n{result.stdout.strip() or '(empty)'}\n\n"
+                            f"stderr:\n{result.stderr.strip() or '(empty)'}\n\n"
+                            f"Parsed dict:\n{mouse_dict}"
+                        )
+                        subprocess.call([
+                            'gxmessage', msg,
+                            '-title', 'xdotool Mouse Failure',
+                            '-center', '-buttons', 'OK:0'
+                        ])
+                        saved_x = saved_y = 0
+                    else:
+                        saved_x = int(mouse_dict['X'])
+                        saved_y = int(mouse_dict['Y'])
 
                     # Get geometry
                     geom_cmd = ['xdotool', 'getwindowgeometry', '--shell', wid]
-                    if debug:
-                        print(f"[XDOTOOL] Running: {' '.join(shlex.quote(p) for p in geom_cmd)}")
                     result = subprocess.run(geom_cmd, capture_output=True, text=True)
-                    if debug:
-                        print(f"[XDOTOOL] stdout: {result.stdout.strip()}")
-                        print(f"[XDOTOOL] stderr: {result.stderr.strip()}")
-                        print(f"[XDOTOOL] returncode: {result.returncode}")
                     geom_dict = _parse_shell_output(result.stdout)
-                    width = int(geom_dict.get('WIDTH', read_merged_key('DEFAULT_WIDTH') or 800))
-                    height = int(geom_dict.get('HEIGHT', read_merged_key('DEFAULT_HEIGHT') or 600))
-                    win_x = int(geom_dict.get('X', 0))
-                    win_y = int(geom_dict.get('Y', 0))
-                    prompt_x = read_merged_key('PROMPT_X_FROM_LEFT') or '50%'
-                    if '%' in prompt_x:
-                        click_x = int(width * int(prompt_x.rstrip('%')) / 100)
+
+                    if (result.returncode != 0 or
+                        not geom_dict or
+                        'WIDTH' not in geom_dict or
+                        'HEIGHT' not in geom_dict):
+                        cmd_str = ' '.join(shlex.quote(p) for p in geom_cmd)
+                        msg = (
+                            f"ERROR: Failed to get valid window geometry for window ID {wid}\n\n"
+                            f"Command executed:\n{cmd_str}\n\n"
+                            f"Return code: {result.returncode}\n"
+                            f"stdout:\n{result.stdout.strip() or '(empty)'}\n\n"
+                            f"stderr:\n{result.stderr.strip() or '(empty)'}\n\n"
+                            f"Parsed geometry dict:\n{geom_dict}"
+                        )
+                        subprocess.call([
+                            'gxmessage', msg,
+                            '-title', 'xdotool Geometry Failure',
+                            '-center', '-buttons', 'OK:0'
+                        ])
+
+                    width = int(geom_dict['WIDTH'])
+                    height = int(geom_dict['HEIGHT'])
+
+                    if '%' in prompt_x_from_left:
+                        click_x = int(width * int(prompt_x_from_left.rstrip('%')) / 100)
                     else:
-                        click_x = int(prompt_x)
-                    prompt_y = read_merged_key('PROMPT_Y_FROM_BOTTOM') or '10%'
-                    if '%' in prompt_y:
-                        pixels_from_bottom = int(height * int(prompt_y.rstrip('%')) / 100)
+                        click_x = int(prompt_x_from_left)
+
+                    if '%' in prompt_y_from_bottom:
+                        pixels_from_bottom = int(height * int(prompt_y_from_bottom.rstrip('%')) / 100)
                     else:
-                        pixels_from_bottom = int(prompt_y)
+                        pixels_from_bottom = int(prompt_y_from_bottom)
+
                     click_y = height - pixels_from_bottom
 
-                    # Move mouse to prompt location (this will move the cursor; we restore it later)
+                    # Move mouse to prompt location
                     move_cmd = ['xdotool', 'mousemove', '--window', wid, str(click_x), str(click_y)]
-                    if debug:
-                        print(f"[XDOTOOL] Running: {' '.join(shlex.quote(p) for p in move_cmd)}")
                     result = subprocess.run(move_cmd, capture_output=True, text=True)
-                    if debug:
-                        print(f"[XDOTOOL] stdout: {result.stdout.strip()}")
-                        print(f"[XDOTOOL] stderr: {result.stderr.strip()}")
-                        print(f"[XDOTOOL] returncode: {result.returncode}")
+                    if result.returncode != 0:
+                        cmd_str = ' '.join(shlex.quote(p) for p in move_cmd)
+                        msg = (
+                            f"ERROR: Failed to move mouse in window {wid}\n\n"
+                            f"Command executed:\n{cmd_str}\n\n"
+                            f"Return code: {result.returncode}\n"
+                            f"stdout:\n{result.stdout.strip() or '(empty)'}\n\n"
+                            f"stderr:\n{result.stderr.strip() or '(empty)'}"
+                        )
+                        subprocess.call([
+                            'gxmessage', msg,
+                            '-title', 'xdotool Mouse Failure',
+                            '-center', '-buttons', 'OK:0'
+                        ])
+
                     self.set_keep_above(False)
 
-                    # three clicks (stacked) to ensure focus/interaction
+                    # three scrolls to position screen content; more reliable than 'home'
                     click_cmd = ['xdotool', 'click', '--clearmodifiers', '--window', wid, '4', '4', '4']
-                    if debug:
-                        print(f"[XDOTOOL] Running: {' '.join(shlex.quote(p) for p in click_cmd)} (focus clicks)")
                     subprocess.run(click_cmd, capture_output=True, text=True)
+                    time.sleep(shot_delay)
 
                     # single left click
                     click1_cmd = ['xdotool', 'click', '--clearmodifiers', '--window', wid, '1']
-                    if debug:
-                        print(f"[XDOTOOL] Running: {' '.join(shlex.quote(p) for p in click1_cmd)} (primary click)")
                     subprocess.run(click1_cmd, capture_output=True, text=True)
+                    time.sleep(shot_delay)
 
-                    # --- clipboard + paste + logging block, then show gxmessage after paste ---
-                    for b in range(burst):
+                    # --- clipboard + paste block ---
+                    for b in range(burst_count):
                         prompt = prompts[(idx - 1 + b) % len(prompts)]
                         if prompt is None:
                             prompt = ''
 
-                        # Window index info for debug output
-                        window_index_info = f"window {idx}/{len(window_ids)}"
-                        shot_in_burst = b + 1
-                        burst_total = burst
-                        if blank_prompt_toggle and (b % 2 == 1):
-                            # blank prompt behavior
-                            key_cmd = ['xdotool', 'key', '--clearmodifiers', '--window', wid, 'ctrl+a', 'Delete', 'Return']
-                            if debug:
-                                print(f"[DEBUG] {window_index_info} - about to run: {' '.join(shlex.quote(p) for p in key_cmd)}")
-                            proc_key = subprocess.run(key_cmd, capture_output=True, text=True)
-                            if debug:
-                                print(f"[DEBUG] {window_index_info} - xdotool key rc={proc_key.returncode}")
-                                if proc_key.stdout.strip():
-                                    print(f"[DEBUG] {window_index_info} - stdout: {proc_key.stdout.strip()}")
-                                if proc_key.stderr.strip():
-                                    print(f"[DEBUG] {window_index_info} - stderr: {proc_key.stderr.strip()}")
-                        else:
-                            # non-blank behavior: set clipboard then paste
-                            if debug:
-                                print(f"[DEBUG] {window_index_info} - Setting clipboard to: {repr(prompt)}")
+                        success = False
+                        try:
+                            clipboard_set(prompt)
+                        except RuntimeError as e:
+                            msg = (
+                                f"ERROR: Failed to set clipboard for prompt in window {wid}\n\n"
+                                f"Prompt: {repr(prompt)}\n\n"
+                                f"Error: {e}"
+                            )
+                            subprocess.call([
+                                'gxmessage', msg,
+                                '-title', 'Clipboard Error',
+                                '-center', '-buttons', 'OK:0'
+                            ])
                             try:
-                                clipboard_set(prompt)
-                                if debug:
-                                    print(f"[DEBUG] {window_index_info} - clipboard_set succeeded")
-                            except RuntimeError as e:
-                                print(f"[ERROR] {window_index_info} - Failed to set clipboard: {e}")
-                                try:
-                                    clipboard_set('')
-                                    if debug:
-                                        print(f"[WARN] {window_index_info} - Cleared clipboard after failure")
-                                except:
-                                    pass
-                                continue
-
-                            # --- NEW: Immediately test clipboard contents and print to console ---
-                            try:
-                                cb_proc = subprocess.run(['xclip', '-selection', 'clipboard', '-o'], capture_output=True, text=True)
-                                cb_text = cb_proc.stdout if cb_proc.returncode == 0 else ''
-                            except FileNotFoundError:
-                                cb_text = ''
-                            except Exception as e:
-                                cb_text = f"<error reading clipboard: {e}>"
-                            geom_line = f"geometry: X={win_x} Y={win_y} W={width} H={height}"
-                            shot_number = total_shots + 1
-                            info_lines = [
-                                f"[CLIPTEST] {window_index_info}",
-                                f"[CLIPTEST] window id: {wid}",
-                                f"[CLIPTEST] {geom_line}",
-                                f"[CLIPTEST] prompt: {repr(prompt)}",
-                                f"[CLIPTEST] shot {shot_in_burst}/{burst_total}",
-                                f"[CLIPTEST] clipboard contains: {repr(cb_text)}",
-                            ]
-
-                            for L in info_lines:
-                                print(L)
-                            # tiny pause to let clipboard settle (helps on some systems)
-
-                            if debug:
-                                time.sleep(0.08)
-                            else:
-                                try:
-                                    time.sleep(float(read_merged_key('BURST_DELAY')))
-                                except Exception:
-                                    time.sleep(0.05)
-
-                            # optional: report active window before paste (debug)
-                            if debug:
-                                try:
-                                    active_w = subprocess.check_output(['xdotool', 'getactivewindow']).decode().strip()
-                                    active_name = subprocess.check_output(['xdotool', 'getwindowname', active_w]).decode().strip()
-                                    print(f"[DEBUG] {window_index_info} - active window id={active_w} name={active_name}")
-                                except Exception as e:
-                                    print(f"[DEBUG] {window_index_info} - active window check failed: {e}")
-                            key_cmd = ['xdotool', 'key', '--clearmodifiers', '--window', wid, 'ctrl+a', 'ctrl+v', 'Return']
-                            if debug:
-                                print(f"[DEBUG] {window_index_info} - about to run: {' '.join(shlex.quote(p) for p in key_cmd)}")
-                            proc_key = subprocess.run(key_cmd, capture_output=True, text=True)
-                            if debug:
-                                print(f"[DEBUG] {window_index_info} - xdotool key rc={proc_key.returncode}")
-                                if proc_key.stdout.strip():
-                                    print(f"[DEBUG] {window_index_info} - stdout: {proc_key.stdout.strip()}")
-                                if proc_key.stderr.strip():
-                                    print(f"[DEBUG] {window_index_info} - stderr: {proc_key.stderr.strip()}")
-
-                        # gxmessage and screenshot only when debug is on, after the Return key
-                        if debug:
-                            shot_number = total_shots + 1
-                            geom_line = f"geometry: X={win_x} Y={win_y} W={width} H={height}"
-                            gx_msg = f"{window_index_info}\n{wid}\n{geom_line}\n{prompt}\nshot {shot_in_burst}/{burst_total}"
-                            try:
-                                gx_timeout_ms = int(read_merged_key('GX_TIMEOUT_MS')) if read_merged_key('GX_TIMEOUT_MS') is not None else 5000
-                            except Exception:
-                                gx_timeout_ms = 5000
-                            gx_cmd = [
-                                'gxmessage',
-                                '-nearmouse',
-                                '-nofocus',
-                                '-ontop',
-                                '--timeout', str(max(1, gx_timeout_ms // 1000)),
-                                '-geometry',
-                                f'+{click_x}+{max(0, click_y - 200)}',
-                                gx_msg
-                            ]
-                            print(f"[DEBUG] GXMSG (blocking with timeout): {' '.join(shlex.quote(p) for p in gx_cmd)}")
-                            def _take_screenshot_with_ksnip_background():
-                                try:
-                                    script_dir = os.path.dirname(os.path.abspath(__file__))
-                                    fname = os.path.join(script_dir, f'{int(time.time())}.png')
-                                    kcmd = ['ksnip', '--nonotify', '--save', fname, '--fullscreen']
-                                    subprocess.Popen(kcmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                                    print(f"[DEBUG] KSNIP scheduled to save: {fname}")
-                                except Exception as e:
-                                    print(f"[DEBUG] Failed to schedule ksnip: {e}")
-                            screenshot_timer = threading.Timer(0.12, _take_screenshot_with_ksnip_background)
-                            screenshot_timer.daemon = True
-                            screenshot_timer.start()
-                            subprocess.run(gx_cmd, capture_output=True, text=True)
-                            try:
-                                if screenshot_timer.is_alive():
-                                    screenshot_timer.join(0.05)
-                            except Exception:
+                                clipboard_set('')
+                            except:
                                 pass
-                        total_shots += 1
-                        if read_merged_key('FIRE_MODE') == 'N':
-                            break
+                        else:
+                            key_cmd = ['xdotool', 'key', '--clearmodifiers', '--window', wid, 'ctrl+a', 'ctrl+v', 'Return']
+                            proc_key = subprocess.run(key_cmd, capture_output=True, text=True)
+                            if proc_key.returncode != 0:
+                                cmd_str = ' '.join(shlex.quote(p) for p in key_cmd)
+                                msg = (
+                                    f"ERROR: Paste key sequence failed in window {wid}\n\n"
+                                    f"Command executed:\n{cmd_str}\n\n"
+                                    f"Return code: {proc_key.returncode}\n"
+                                    f"stdout:\n{proc_key.stdout.strip() or '(empty)'}\n\n"
+                                    f"stderr:\n{proc_key.stderr.strip() or '(empty)'}"
+                                )
+                                subprocess.call([
+                                    'gxmessage', msg,
+                                    '-title', 'xdotool Key Failure',
+                                    '-center', '-buttons', 'OK:0'
+                                ])
+                            else:
+                                success = True
 
-                    # --- end clipboard + paste + debug gxmessage block ---
+                        if success:
+                            time.sleep(shot_delay)
+
+                        total_shots += 1
+                        update_status(f"Firing round {round_num}/{fire_count} — {total_shots} shots fired")
+
                     # restore mouse
                     restore_cmd = ['xdotool', 'mousemove', str(saved_x), str(saved_y)]
-                    if debug:
-                        print(f"[XDOTOOL] Running: {' '.join(shlex.quote(p) for p in restore_cmd)} (restore mouse)")
-                    subprocess.run(restore_cmd, capture_output=True, text=True)
-                    self.set_keep_above(True)
-                except Exception as e:
-                    print(f"[DAEMON] Error processing window {wid}: {e}")
-                    # Do not swallow; continue to next window after reporting
-                if read_merged_key('FIRE_MODE') == 'N':
-                    break
-        print(f"[DAEMON] Completed. Total shots: {total_shots}")
+                    result = subprocess.run(restore_cmd, capture_output=True, text=True)
+                    if result.returncode != 0:
+                        cmd_str = ' '.join(shlex.quote(p) for p in restore_cmd)
+                        msg = (
+                            f"ERROR: Failed to restore mouse position\n\n"
+                            f"Command executed:\n{cmd_str}\n\n"
+                            f"Return code: {result.returncode}\n"
+                            f"stdout:\n{result.stdout.strip() or '(empty)'}\n\n"
+                            f"stderr:\n{result.stderr.strip() or '(empty)'}"
+                        )
+                        subprocess.call([
+                            'gxmessage', msg,
+                            '-title', 'xdotool Mouse Restore Failure',
+                            '-center', '-buttons', 'OK:0'
+                        ])
 
+                    self.set_keep_above(True)
+
+                except Exception as e:
+                    msg = f"Unexpected error processing window {wid}:\n\n{e}"
+                    subprocess.call(['gxmessage', msg, '-title', 'Daemon Error', '-center', '-buttons', 'OK:0'])
+
+                time.sleep(inter_window_delay)
+
+        update_status(f"Done — {total_shots} shots fired")
         update_env(IMAGINE_ENV, 'FIRE_MODE', 'N')
         GLib.idle_add(self.update_fire_button)
-        GLib.idle_add(lambda: self.status_label.set_text("Ready") or False)
+        GLib.timeout_add(5000, lambda: self.status_label.set_text("Ready") or False)
 
 if __name__ == '__main__':
-    # Enforce strict validation: fail loudly if configuration is missing or malformed.
+    # Enforce strict validation: fail loudly and immediately.
     try:
         validate_config()
     except Exception as e:
@@ -1192,6 +1253,7 @@ if __name__ == '__main__':
         print("FATAL CONFIGURATION ERROR:", file=sys.stderr)
         print(str(e), file=sys.stderr)
         sys.exit(2)
+
     win = BlitzControl()
     win.connect("destroy", Gtk.main_quit)
     win.show_all()

@@ -231,7 +231,6 @@ def get_prompts_from_input(input_str):
             prompts = ['']
     return prompts
 
-
 # -------------------------
 # Configuration validation
 # -------------------------
@@ -257,6 +256,7 @@ def validate_config():
         'ROUND_DELAY': 'float',
         'BURST_DELAY': 'float',
         'INTER_WINDOW_DELAY': 'float',
+        'TARGET_OP_DELAY': 'float',
         'PANEL_DEFAULT_TITLE': 'str',
         'PANEL_DEFAULT_WIDTH': 'int',
         'PANEL_DEFAULT_HEIGHT': 'int',
@@ -714,7 +714,7 @@ class BlitzControl(Gtk.Window):
 
         file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), read_merged_key('WINDOW_LIST'))
         if os.path.exists(file_path):
-            self.gently_close_windows_from_list(file_path, delay=1.0)
+            self.gentle_target_op('kill', sync=True)
 
         try:
             subprocess.run(['pkill', '-f', target], check=False)
@@ -745,11 +745,12 @@ class BlitzControl(Gtk.Window):
                 cmd[-2] = cmd[-2] + cmd[-1]
                 cmd.pop()
             try:
-                subprocess.Popen(cmd)
+                subprocess.Popen(cmd, stderr=subprocess.DEVNULL)
             except Exception as e:
                 cmd_str = ' '.join(shlex.quote(p) for p in cmd)
                 msg = f"Failed to launch browser window:\n\nCommand: {cmd_str}\n\nError: {e}"
                 subprocess.call(['gxmessage', msg, '-title', 'Launch Error', '-center', '-buttons', 'OK:0'])
+
             time.sleep(stage_delay)
 
         GLib.timeout_add(int(grid_start_delay * 1000), lambda: self.grid_windows(num) or False)
@@ -799,7 +800,7 @@ class BlitzControl(Gtk.Window):
 
         file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), read_merged_key('WINDOW_LIST'))
         if os.path.exists(file_path):
-            self.gently_close_windows_from_list(file_path, delay=1.0)
+            self.gentle_target_op('kill', sync=True)
 
         try:
             subprocess.run(['pkill', '-f', target], check=False)
@@ -942,15 +943,23 @@ class BlitzControl(Gtk.Window):
                     msg = f"Failed to size/move window {wid}:\n\nError: {e}"
                     subprocess.call(['gxmessage', msg, '-title', 'Grid Error', '-center', '-buttons', 'OK:0'])
                 f.write(wid + '\n')
+        self.gentle_target_op('activate', sync=True)
 
-        self.activate_windows_from_list(list_path, delay=0.2)
+    def gentle_target_op(self, op_type, sync=True, delay=None):
+        """
+        Unified window operation: activate or kill windows from list.
+        op_type: 'activate' or 'kill'
+        sync: True/False for --sync on activate
+        delay: optional float; if None, uses TARGET_OP_DELAY from config (fallback 1.0)
+        """
+        if delay is None:
+            delay_val = read_merged_key('TARGET_OP_DELAY')
+            delay = float(delay_val) if delay_val is not None else 1.0
 
-    def activate_windows_from_list(self, file_path, delay=1.0):
-        file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), file_path) if not os.path.isabs(file_path) else file_path
-
+        file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), read_merged_key('WINDOW_LIST'))
         if not os.path.exists(file_path):
             msg = f"Window list file not found:\n\n{file_path}"
-            subprocess.call(['gxmessage', msg, '-title', 'Activate Error', '-center', '-buttons', 'OK:0'])
+            subprocess.call(['gxmessage', msg, '-title', 'Target Op Error', '-center', '-buttons', 'OK:0'])
             return
 
         with open(file_path, 'r', encoding='utf-8') as f:
@@ -960,73 +969,26 @@ class BlitzControl(Gtk.Window):
             return
 
         for wid in window_ids:
-            act_cmd = ['xdotool', 'windowactivate', '--sync', wid]
-            result = subprocess.run(act_cmd, capture_output=True, text=True)
-            if result.returncode != 0:
-                cmd_str = ' '.join(shlex.quote(p) for p in act_cmd)
-                msg = (
-                    f"Failed to activate window {wid}\n\n"
-                    f"Command executed:\n{cmd_str}\n\n"
-                    f"Return code: {result.returncode}\n"
-                    f"stdout:\n{result.stdout.strip() or '(empty)'}\n\n"
-                    f"stderr:\n{result.stderr.strip() or '(empty)'}"
-                )
-                subprocess.call(['gxmessage', msg, '-title', 'xdotool Activate Failure', '-timeout', '10', '-center', '-buttons', 'OK:0'])
-            time.sleep(delay)
+            # Always activate first (with optional sync)
+            sync_flag = '--sync' if sync else ''
+            act_cmd = ['xdotool', 'windowactivate', sync_flag, wid]
+            subprocess.run(act_cmd, capture_output=True, text=True)
 
-    def gently_close_windows_from_list(self, file_path, delay=1.0):
-        """
-        Gently closes windows from a list of window IDs using xdotool.
-        Primary method: simulate Alt+F4 (most user-like close).
-        """
-        file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), file_path) \
-            if not os.path.isabs(file_path) else file_path
-
-        if not os.path.exists(file_path):
-            msg = f"Window list file not found:\n\n{file_path}"
-            subprocess.call(['gxmessage', msg, '-title', 'Close Error', '-center', '-buttons', 'OK:0'])
-            return
-
-        with open(file_path, 'r', encoding='utf-8') as f:
-            window_ids = [line.strip() for line in f if line.strip()]
-
-        if not window_ids:
-            return
-
-        for wid in window_ids:
-            # ───────────────────────────────────────────────
-            # Primary method: Activate + send Alt+F4
-            # (most reliable for browsers like Edge/Chrome)
-            # ───────────────────────────────────────────────
-            act_cmd = ['xdotool', 'windowactivate', '--sync', wid]
-            subprocess.run(act_cmd, capture_output=True, text=True)  # we don't fail on activate
-
-            close_cmd = [
-                'xdotool', 'windowactivate', '--sync', wid,
-                'key', '--clearmodifiers', 'alt+F4'
-            ]
-            result = subprocess.run(close_cmd, capture_output=True, text=True)
-
-            # ───────────────────────────────────────────────
-            # Alternative method: use windowclose (WM_DELETE_WINDOW)
-            # Uncomment this block and comment the Alt+F4 block above if you prefer
-            #
-            # close_cmd = ['xdotool', 'windowclose', wid]
-            # result = subprocess.run(close_cmd, capture_output=True, text=True)
-            # ───────────────────────────────────────────────
-
-            if result.returncode != 0:
-                cmd_str = ' '.join(shlex.quote(p) for p in close_cmd)
-                msg = (
-                    f"Failed to close window {wid}\n\n"
-                    f"Command executed:\n{cmd_str}\n\n"
-                    f"Return code: {result.returncode}\n"
-                    f"stdout:\n{result.stdout.strip() or '(empty)'}\n\n"
-                    f"stderr:\n{result.stderr.strip() or '(empty)'}\n\n"
-                    "Window may still be open."
-                )
-                subprocess.call(['gxmessage', msg, '-title', 'xdotool Close Failure',
-                                '-timeout', '10', '-center', '-buttons', 'OK:0'])
+            if op_type == 'kill':
+                close_cmd = ['xdotool', 'key', '--clearmodifiers', 'alt+F4']
+                result = subprocess.run(close_cmd, capture_output=True, text=True)
+                if result.returncode != 0:
+                    cmd_str = ' '.join(shlex.quote(p) for p in close_cmd)
+                    msg = (
+                        f"Failed to close window {wid}\n\n"
+                        f"Command executed:\n{cmd_str}\n\n"
+                        f"Return code: {result.returncode}\n"
+                        f"stdout:\n{result.stdout.strip() or '(empty)'}\n\n"
+                        f"stderr:\n{result.stderr.strip() or '(empty)'}\n\n"
+                        "Window may still be open."
+                    )
+                    subprocess.call(['gxmessage', msg, '-title', 'xdotool Close Failure',
+                                    '-timeout', '10', '-center', '-buttons', 'OK:0'])
 
             time.sleep(delay)
 
@@ -1039,6 +1001,8 @@ class BlitzControl(Gtk.Window):
         burst_count = int(read_merged_key('BURST_COUNT'))
         burst_delay_val = read_merged_key('BURST_DELAY')
         burst_delay = float(burst_delay_val) if burst_delay_val else 0.05
+        target_op_delay_val = read_merged_key('TARGET_OP_DELAY')
+        target_op_delay = float(target_op_delay_val) if target_op_delay_val else 0.1
         inter_window_delay_val = read_merged_key('INTER_WINDOW_DELAY')
         inter_window_delay = float(inter_window_delay_val) if inter_window_delay_val else 0.0
         shot_delay_val = read_merged_key('SHOT_DELAY')
@@ -1046,8 +1010,7 @@ class BlitzControl(Gtk.Window):
         prompt_x_from_left = read_merged_key('PROMPT_X_FROM_LEFT') or '50%'
         prompt_y_from_bottom = read_merged_key('PROMPT_Y_FROM_BOTTOM') or '10%'
 
-        list_path = read_merged_key('WINDOW_LIST')
-        self.activate_windows_from_list(list_path, delay=inter_window_delay)
+        self.gentle_target_op('activate', sync=True)
 
         def _parse_shell_output(text):
             d = {}
@@ -1093,7 +1056,7 @@ class BlitzControl(Gtk.Window):
             if not prompts or all(not p.strip() for p in prompts):
                 default_prompt = read_merged_key('DEFAULT_PROMPT')
                 if default_prompt:
-                    prompts = [ _unquote_one_line(default_prompt) ]
+                    prompts = [_unquote_one_line(default_prompt)]
 
             if not prompts:
                 continue
@@ -1157,8 +1120,6 @@ class BlitzControl(Gtk.Window):
 
                     width = int(geom_dict['WIDTH'])
                     height = int(geom_dict['HEIGHT'])
-                    win_x = int(geom_dict.get('X', 0))
-                    win_y = int(geom_dict.get('Y', 0))
 
                     if '%' in prompt_x_from_left:
                         click_x = int(width * int(prompt_x_from_left.rstrip('%')) / 100)
