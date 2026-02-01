@@ -7,7 +7,7 @@
 
 XEPHYR_TITLE="Mini VM - KDE Plasma"
 DISPLAY_NUM=:1
-SCREEN_SIZE="1366x768"  # Adjust to fit your host screen/resolution needs
+SCREEN_SIZE="1900x960"  # Adjust to fit your host screen/resolution needs
 
 # Start Xephyr (nested X11 server)
 #Xephyr -ac -br -noreset -screen "$SCREEN_SIZE" -title "$XEPHYR_TITLE" "$DISPLAY_NUM" &
@@ -47,7 +47,7 @@ dbus-launch --exit-with-session startplasma-x11 &
 # startfluxbox &
 
 # Give the DE time to fully load (kwin decorations + panel/taskbar + tray)
-sleep 15
+sleep 5
 
 # Optional: move the Xephyr window to the next virtual desktop on the host
 NUM_DESKTOPS=$(wmctrl -d | wc -l)
@@ -60,4 +60,4 @@ else
 fi
 
 # Launch your blitz_talker control panel inside the nested Plasma desktop
-./blitz_talker_control.sh
+./blitz_talker_control_gtk.py
