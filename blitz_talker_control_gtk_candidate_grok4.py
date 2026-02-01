@@ -231,19 +231,6 @@ def get_prompts_from_input(input_str):
             prompts = ['']
     return prompts
 
-# -------------------------
-# BLANK_PROMPT helper
-# -------------------------
-
-def get_blank_prompt_mode():
-    """
-    Read BLANK_PROMPT mode using merged read semantics.
-    Returns integer 0 or 1. Raises if not set.
-    """
-    val = read_merged_key('BLANK_PROMPT')
-    if val is None:
-        raise RuntimeError("Configuration error: BLANK_PROMPT not set in any env file.")
-    return 1 if str(val).strip() == '1' else 0
 
 # -------------------------
 # Configuration validation
@@ -278,7 +265,6 @@ def validate_config():
         'STAGE_COUNT': 'int',
         'BURST_COUNT': 'int',
         'FIRE_COUNT': 'int',
-        'BLANK_PROMPT': 'int',
         'FIRE_MODE': 'str',
         'DEBUG_DAEMON_ECHO': 'int',
         'PROMPT_X_FROM_LEFT': 'str',
@@ -957,7 +943,7 @@ class BlitzControl(Gtk.Window):
                     subprocess.call(['gxmessage', msg, '-title', 'Grid Error', '-center', '-buttons', 'OK:0'])
                 f.write(wid + '\n')
 
-        self.activate_windows_from_list(list_path, delay=0)
+        self.activate_windows_from_list(list_path, delay=0.2)
 
     def activate_windows_from_list(self, file_path, delay=1.0):
         file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), file_path) if not os.path.isabs(file_path) else file_path
@@ -1047,7 +1033,6 @@ class BlitzControl(Gtk.Window):
     def daemon_thread_func(self):
         total_shots = 0
         fire_count = int(read_merged_key('FIRE_COUNT'))
-        blank_prompt_toggle = get_blank_prompt_mode()
 
         # Cache repeated values once at the start of the daemon
         round_delay = float(read_merged_key('ROUND_DELAY'))
@@ -1224,14 +1209,31 @@ class BlitzControl(Gtk.Window):
                             prompt = ''
 
                         success = False
-                        if blank_prompt_toggle and (b % 2 == 1):
-                            # blank prompt behavior
-                            key_cmd = ['xdotool', 'key', '--clearmodifiers', '--window', wid, 'ctrl+a', 'Delete', 'Return']
+                        try:
+                            clipboard_set(prompt)
+                        except RuntimeError as e:
+                            msg = (
+                                f"ERROR: Failed to set clipboard for prompt in window {wid}\n\n"
+                                f"Prompt: {repr(prompt)}\n\n"
+                                f"Error: {e}"
+                            )
+                            subprocess.call([
+                                'gxmessage', msg,
+                                '-title', 'Clipboard Error',
+                                '-center', '-buttons', 'OK:0'
+                            ])
+                            try:
+                                clipboard_set('')
+                            except:
+                                pass
+                            # skip delay on clipboard fail
+                        else:
+                            key_cmd = ['xdotool', 'key', '--clearmodifiers', '--window', wid, 'ctrl+a', 'ctrl+v', 'Return']
                             proc_key = subprocess.run(key_cmd, capture_output=True, text=True)
                             if proc_key.returncode != 0:
                                 cmd_str = ' '.join(shlex.quote(p) for p in key_cmd)
                                 msg = (
-                                    f"ERROR: Blank prompt key sequence failed in window {wid}\n\n"
+                                    f"ERROR: Paste key sequence failed in window {wid}\n\n"
                                     f"Command executed:\n{cmd_str}\n\n"
                                     f"Return code: {proc_key.returncode}\n"
                                     f"stdout:\n{proc_key.stdout.strip() or '(empty)'}\n\n"
@@ -1244,48 +1246,9 @@ class BlitzControl(Gtk.Window):
                                 ])
                             else:
                                 success = True
-                        else:
-                            # non-blank behavior
-                            try:
-                                clipboard_set(prompt)
-                            except RuntimeError as e:
-                                msg = (
-                                    f"ERROR: Failed to set clipboard for prompt in window {wid}\n\n"
-                                    f"Prompt: {repr(prompt)}\n\n"
-                                    f"Error: {e}"
-                                )
-                                subprocess.call([
-                                    'gxmessage', msg,
-                                    '-title', 'Clipboard Error',
-                                    '-center', '-buttons', 'OK:0'
-                                ])
-                                try:
-                                    clipboard_set('')
-                                except:
-                                    pass
-                                # skip delay on clipboard fail
-                            else:
-                                key_cmd = ['xdotool', 'key', '--clearmodifiers', '--window', wid, 'ctrl+a', 'ctrl+v', 'Return']
-                                proc_key = subprocess.run(key_cmd, capture_output=True, text=True)
-                                if proc_key.returncode != 0:
-                                    cmd_str = ' '.join(shlex.quote(p) for p in key_cmd)
-                                    msg = (
-                                        f"ERROR: Paste key sequence failed in window {wid}\n\n"
-                                        f"Command executed:\n{cmd_str}\n\n"
-                                        f"Return code: {proc_key.returncode}\n"
-                                        f"stdout:\n{proc_key.stdout.strip() or '(empty)'}\n\n"
-                                        f"stderr:\n{proc_key.stderr.strip() or '(empty)'}"
-                                    )
-                                    subprocess.call([
-                                        'gxmessage', msg,
-                                        '-title', 'xdotool Key Failure',
-                                        '-center', '-buttons', 'OK:0'
-                                    ])
-                                else:
-                                    success = True
 
                         if success:
-                            time.sleep(shot_delay) # 4. after each successful shot (blank or non-blank)
+                            time.sleep(shot_delay) # 4. after each successful shot
 
                         total_shots += 1
                         update_status(f"Firing round {round_num}/{fire_count} — {total_shots} shots fired")
