@@ -253,7 +253,6 @@ def validate_config():
         'GRID_START_DELAY': 'float',
         'STAGE_DELAY': 'float',
         'ROUND_DELAY': 'float',
-        'BURST_DELAY': 'float',
         'INTER_WINDOW_DELAY': 'float',
         'TARGET_OP_DELAY': 'float',
         'PANEL_DEFAULT_TITLE': 'str',
@@ -262,7 +261,6 @@ def validate_config():
         'PANEL_DEFAULT_X_OFFSET': 'int',
         'PANEL_DEFAULT_Y_OFFSET': 'int',
         'STAGE_COUNT': 'int',
-        'BURST_COUNT': 'int',
         'FIRE_COUNT': 'int',
         'FIRE_MODE': 'str',
         'DEBUG_DAEMON_ECHO': 'int',
@@ -417,19 +415,9 @@ class BlitzControl(Gtk.Window):
         pick_prompt_btn.connect("clicked", self.on_pick_prompt_file)
         prompt_box.pack_start(pick_prompt_btn, False, False, 0)
 
-        # Horizontal row for the three spin controls
+        # Horizontal row for the spin controls
         controls_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         box.pack_start(controls_box, False, False, 0)
-
-        # Burst
-        burst_hbox = Gtk.Box(spacing=2)
-        burst_label = Gtk.Label(label="Burst:")
-        burst_hbox.pack_start(burst_label, False, False, 0)
-
-        burst_adj = Gtk.Adjustment(value=int(read_merged_key('BURST_COUNT')), lower=1, upper=200, step_increment=1)
-        self.burst_spin = Gtk.SpinButton(adjustment=burst_adj)
-        burst_hbox.pack_start(self.burst_spin, True, True, 0)
-        controls_box.pack_start(burst_hbox, True, True, 0)
 
         # Rounds
         fire_hbox = Gtk.Box(spacing=2)
@@ -497,7 +485,6 @@ class BlitzControl(Gtk.Window):
         self._loaded_snapshot = {
             'DEFAULT_URL': self.url_entry.get_text(),
             'PROMPTS': initial_prompts_text,
-            'BURST_COUNT': str(self.burst_spin.get_value_as_int()),
             'FIRE_COUNT': str(self.fire_spin.get_value_as_int()),
             'STAGE_COUNT': str(self.stage_spin.get_value_as_int()),
         }
@@ -524,7 +511,6 @@ class BlitzControl(Gtk.Window):
         current_url = self.url_entry.get_text()
         start_iter, end_iter = self.prompt_buffer.get_bounds()
         current_prompts = self.prompt_buffer.get_text(start_iter, end_iter, False)
-        current_burst = str(int(self.burst_spin.get_value()))
         current_fire = str(int(self.fire_spin.get_value()))
         current_stage = str(int(self.stage_spin.get_value()))
 
@@ -608,21 +594,7 @@ class BlitzControl(Gtk.Window):
                     with open(USER_ENV, 'w', encoding='utf-8') as f:
                         f.writelines(lines)
 
-        # --- BURST_COUNT and FIRE_COUNT to .imagine_env ---
-        sys_burst = system_val('BURST_COUNT')
-        if current_burst != self._loaded_snapshot.get('BURST_COUNT', ''):
-            if sys_burst is None or current_burst != sys_burst:
-                update_env(IMAGINE_ENV, 'BURST_COUNT', current_burst)
-            else:
-                if os.path.exists(IMAGINE_ENV):
-                    lines = []
-                    with open(IMAGINE_ENV, 'r', encoding='utf-8') as f:
-                        for line in f:
-                            if not line.strip().startswith('BURST_COUNT='):
-                                lines.append(line)
-                    with open(IMAGINE_ENV, 'w', encoding='utf-8') as f:
-                        f.writelines(lines)
-
+        # --- FIRE_COUNT to .imagine_env ---
         sys_fire = system_val('FIRE_COUNT')
         if current_fire != self._loaded_snapshot.get('FIRE_COUNT', ''):
             if sys_fire is None or current_fire != sys_fire:
@@ -641,7 +613,6 @@ class BlitzControl(Gtk.Window):
         self._loaded_snapshot.update({
             'DEFAULT_URL': current_url,
             'PROMPTS': current_prompts,
-            'BURST_COUNT': current_burst,
             'FIRE_COUNT': current_fire,
             'STAGE_COUNT': current_stage,
         })
@@ -997,11 +968,6 @@ class BlitzControl(Gtk.Window):
 
         # Cache repeated values once at the start of the daemon
         round_delay = float(read_merged_key('ROUND_DELAY'))
-        burst_count = int(read_merged_key('BURST_COUNT'))
-        burst_delay_val = read_merged_key('BURST_DELAY')
-        burst_delay = float(burst_delay_val) if burst_delay_val else 0.05
-        target_op_delay_val = read_merged_key('TARGET_OP_DELAY')
-        target_op_delay = float(target_op_delay_val) if target_op_delay_val else 0.1
         inter_window_delay_val = read_merged_key('INTER_WINDOW_DELAY')
         inter_window_delay = float(inter_window_delay_val) if inter_window_delay_val else 0.0
         shot_delay_val = read_merged_key('SHOT_DELAY')
