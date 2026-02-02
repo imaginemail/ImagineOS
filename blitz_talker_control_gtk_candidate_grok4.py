@@ -24,6 +24,8 @@ import time
 import threading
 import sys
 import gi
+import urllib.parse
+import datetime
 
 gi.require_version('Gtk', '3.0')
 gi.require_version('Gdk', '3.0')
@@ -320,10 +322,86 @@ def clipboard_set(text):
         raise RuntimeError(f"Failed to set clipboard via xclip: {e}")
 
 # -------------------------
-# Main GUI / daemon class
+# .gxi writer
 # -------------------------
 
 class BlitzControl(Gtk.Window):
+
+    def write_gxi(self):
+        url = self.url_entry.get_text().strip()
+        if not url:
+            return
+
+        safe_name = urllib.parse.quote(url, safe='') + '.gxi'
+        gxi_dir = os.path.join(HOME, '.imagine_targets')
+        os.makedirs(gxi_dir, exist_ok=True)
+        gxi_path = os.path.join(gxi_dir, safe_name)
+
+        # Current active prompt from UI
+        start, end = self.prompt_buffer.get_bounds()
+        active_prompt = self.prompt_buffer.get_text(start, end, False).strip()
+
+        # Env prompts for STAGE_U
+        env_prompts = load_user_prompts()
+
+        created = datetime.datetime.now().strftime('%Y-%m-%d %H:%M')
+
+        stage_u = '# STAGE_U: Unsorted / Legacy Prompts\n'
+        if env_prompts:
+            stage_u += f'@{env_prompts[0]}\n' if env_prompts else ''
+            for p in env_prompts:
+                stage_u += f'{p}\n'
+
+        skeleton = f"""TARGET_URL={url}
+TARGET_BORN={created}
+TARGET_DESC=a freeform text block with a reasonable character limit, newlines allowed
+
+(blank prompt special characters; ~ = xdotool key ctrl-a, Del, Return, # = xdotool key return. activated by @ in front, same as stages prompts are.)
+~
+#
+
+{stage_u}
+
+STAGE_0
+@{active_prompt}
+
+.history_0
+
+STAGE_1
+
+.history_1
+
+STAGE_2
+
+.history_2
+
+STAGE_3
+
+.history_3
+"""
+
+        if not os.path.exists(gxi_path):
+            with open(gxi_path, 'w', encoding='utf-8') as f:
+                f.write(skeleton)
+        else:
+            # Update active in STAGE_0, append to .history_0
+            lines = []
+            in_history_0 = False
+            with open(gxi_path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    if line.strip() == '.history_0':
+                        in_history_0 = True
+                    if in_history_0 and line.strip().startswith('STAGE_'):
+                        in_history_0 = False
+                    if line.strip().startswith('@'):
+                        line = f'@{active_prompt}\n' if active_prompt else '@\n'
+                    lines.append(line)
+
+            # Append fired prompt to history
+            lines.append(f'{active_prompt}\n' if active_prompt else '\n')
+
+            with open(gxi_path, 'w', encoding='utf-8') as f:
+                f.writelines(lines)
 
     def __init__(self):
         super().__init__(title=".Blitz Talker.")
@@ -619,6 +697,9 @@ class BlitzControl(Gtk.Window):
             'FIRE_COUNT': current_fire,
             'STAGE_COUNT': current_stage,
         })
+
+        # Write/update .gxi with current state
+        self.write_gxi()
 
     def on_pick_url_file(self, widget):
         self.save_all()
@@ -935,7 +1016,11 @@ class BlitzControl(Gtk.Window):
                     msg = f"Failed to size/move window {wid}:\n\nError: {e}"
                     subprocess.call(['gxmessage', msg, '-title', 'Grid Error', '-center', '-buttons', 'OK:0'])
                 f.write(wid + '\n')
+
         self.gentle_target_op('activate', sync=True)
+
+        # Initial .gxi creation after grid complete
+        self.write_gxi()
 
         auto_fire_val = read_merged_key('AUTO_FIRE')
         if auto_fire_val in ('1', 'Y', 'true', 'True'):
@@ -1207,11 +1292,14 @@ class BlitzControl(Gtk.Window):
                             else:
                                 success = True
 
-                        if success:
-                            time.sleep(shot_delay) # 4. after each successful shot
+                    if success:
+                        time.sleep(shot_delay)
 
-                        total_shots += 1
-                        update_status(f"Firing round {round_num}/{fire_count} — {total_shots} shots fired")
+                        # Write/update .gxi after each successful shot
+                        self.write_gxi()
+
+                    total_shots += 1
+                    update_status(f"Firing round {round_num}/{fire_count} — {total_shots} shots fired")
 
                     # restore mouse
                     restore_cmd = ['xdotool', 'mousemove', str(saved_x), str(saved_y)]
