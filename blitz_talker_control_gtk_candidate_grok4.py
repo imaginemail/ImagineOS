@@ -160,18 +160,21 @@ def choose_prompts(system_env_path=SYSTEM_ENV, user_env_path=USER_ENV):
 # -------------------------
 
 def load_flags(key):
-    if not os.path.exists(SYSTEM_ENV):
+    val = None
+    for path in (SYSTEM_ENV, IMAGINE_ENV, USER_ENV):
+        if not os.path.exists(path):
+            continue
+        with open(path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        pattern = rf'(?s){re.escape(key)}\s*=\s*["\']\s*(.*?)\s*["\']'
+        match = re.search(pattern, content)
+        if match:
+            val = match.group(1)  # last match wins (user overrides)
+    if val is None:
         return []
-    with open(SYSTEM_ENV, 'r', encoding='utf-8') as f:
-        content = f.read()
-    pattern = rf'(?s){re.escape(key)}\s*=\s*["\']\s*(.*?)\s*["\']'
-    match = re.search(pattern, content)
-    if match:
-        val = match.group(1)
-        val = re.sub(r'\\\s*$', '', val)
-        val = re.sub(r'\\\s*\n\s*', ' ', val)
-        return shlex.split(val)
-    return []
+    val = re.sub(r'\\\s*$', '', val)
+    val = re.sub(r'\\\s*\n\s*', ' ', val)
+    return shlex.split(val)
 
 # -------------------------
 # Env updater (existing)
@@ -708,16 +711,35 @@ class BlitzControl(Gtk.Window):
 
         cmd_base = [read_merged_key('BROWSER')] + load_flags('BROWSER_FLAGS_HEAD') + load_flags('BROWSER_FLAGS_MIDDLE') + load_flags('BROWSER_FLAGS_TAIL')
 
+        # Echo flag sections individually
+        browser = read_merged_key('BROWSER')
+        head_flags = load_flags('BROWSER_FLAGS_HEAD')
+        middle_flags = load_flags('BROWSER_FLAGS_MIDDLE')
+        tail_flags = load_flags('BROWSER_FLAGS_TAIL')
+
+        print("Browser executable:", shlex.quote(browser))
+        print("Head flags:", ' '.join(shlex.quote(f) for f in head_flags) or "(none)")
+        print("Middle flags:", ' '.join(shlex.quote(f) for f in middle_flags) or "(none)")
+        print("Tail flags:", ' '.join(shlex.quote(f) for f in tail_flags) or "(none)")
+
+        cmd_base_str = ' '.join(shlex.quote(p) for p in cmd_base)
+        print("Base command:", cmd_base_str)
+
         for i in range(num):
             url = urls[i % len(urls)]
             cmd = cmd_base + [url]
-            if load_flags('BROWSER_FLAGS_TAIL'):
+            if tail_flags: # reuse the earlier loaded list to avoid extra calls
                 cmd[-2] = cmd[-2] + cmd[-1]
                 cmd.pop()
+
+            # Echo the precise final command
+            cmd_str = ' '.join(shlex.quote(p) for p in cmd)
+            print(f"Launching window {i+1} with URL: {url}")
+            print("Full command:", cmd_str)
+
             try:
                 subprocess.Popen(cmd, stderr=subprocess.DEVNULL)
             except Exception as e:
-                cmd_str = ' '.join(shlex.quote(p) for p in cmd)
                 msg = f"Failed to launch browser window:\n\nCommand: {cmd_str}\n\nError: {e}"
                 subprocess.call(['gxmessage', msg, '-title', 'Launch Error', '-center', '-buttons', 'OK:0'])
 
