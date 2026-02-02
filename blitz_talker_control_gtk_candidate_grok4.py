@@ -747,7 +747,7 @@ class BlitzControl(Gtk.Window):
 
         GLib.timeout_add(int(grid_start_delay * 1000), lambda: self.grid_windows(num) or False)
 
-    def on_fire(self, widget):
+    def on_fire(self, widget=None):
         self.save_all()
         if read_merged_key('FIRE_MODE') == 'N':
             update_env(IMAGINE_ENV, 'FIRE_MODE', 'Y')
@@ -936,6 +936,11 @@ class BlitzControl(Gtk.Window):
                     subprocess.call(['gxmessage', msg, '-title', 'Grid Error', '-center', '-buttons', 'OK:0'])
                 f.write(wid + '\n')
         self.gentle_target_op('activate', sync=True)
+
+        auto_fire_val = read_merged_key('AUTO_FIRE')
+        if auto_fire_val in ('1', 'Y', 'true', 'True'):
+            time.sleep(5)  # hard-coded test delay
+            self.on_fire(None)  # trigger same as FIRE button click
 
     def gentle_target_op(self, op_type, sync=True, delay=None):
         """
