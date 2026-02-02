@@ -93,7 +93,6 @@ def load_user_prompts(user_env_path=USER_ENV):
     Return a list of prompts found in .user_env.
     Behavior:
       - Each line that starts with PROMPT= yields one prompt entry.
-      - PROMPT= (empty) yields one empty-string prompt (explicit).
       - Quoted values are unquoted; any embedded newlines are collapsed to spaces.
     """
     prompts = []
@@ -140,7 +139,7 @@ def load_env_multiline(path):
 def choose_prompts(system_env_path=SYSTEM_ENV, user_env_path=USER_ENV):
     """
     Precedence:
-      1. PROMPT lines in user_env (one-per-line) -> return list (even if contains empty string)
+      1. PROMPT lines in user_env (one-per-line) -> return list
       2. DEFAULT_PROMPT in user_env -> single prompt (converted to single-line)
       3. DEFAULT_PROMPT in system_env -> single prompt
       4. else -> [''] (single explicit empty prompt)
@@ -1052,13 +1051,11 @@ class BlitzControl(Gtk.Window):
             with open(live_windows_file, 'r', encoding='utf-8') as f:
                 window_ids = [line.strip() for line in f if line.strip()]
 
-            prompts = load_user_prompts()
-            if not prompts or all(not p.strip() for p in prompts):
-                default_prompt = read_merged_key('DEFAULT_PROMPT')
-                if default_prompt:
-                    prompts = [_unquote_one_line(default_prompt)]
+            # Current active prompt from UI (single shot now)
+            start, end = self.prompt_buffer.get_bounds()
+            prompt = self.prompt_buffer.get_text(start, end, False).strip()
 
-            if not prompts:
+            if not prompt:
                 continue
 
             for idx, wid in enumerate(window_ids, start=1):
@@ -1161,15 +1158,21 @@ class BlitzControl(Gtk.Window):
                     # single left click
                     click1_cmd = ['xdotool', 'click', '--clearmodifiers', '--window', wid, '1']
                     subprocess.run(click1_cmd, capture_output=True, text=True)
-                    time.sleep(shot_delay) # 3. after single click
+                    time.sleep(shot_delay)
 
-                    # --- clipboard + paste block ---
-                    for b in range(burst_count):
-                        prompt = prompts[(idx - 1 + b) % len(prompts)]
-                        if prompt is None:
-                            prompt = ''
-
-                        success = False
+                    # Single paste (no burst)
+                    success = False
+                    if prompt == '~':
+                        key_cmd = ['xdotool', 'key', '--clearmodifiers', '--window', wid, 'ctrl+a', 'Delete', 'Return']
+                        proc_key = subprocess.run(key_cmd, capture_output=True, text=True)
+                        if proc_key.returncode == 0:
+                            success = True
+                    elif prompt == '#':
+                        key_cmd = ['xdotool', 'key', '--clearmodifiers', '--window', wid, 'Return']
+                        proc_key = subprocess.run(key_cmd, capture_output=True, text=True)
+                        if proc_key.returncode == 0:
+                            success = True
+                    else:
                         try:
                             clipboard_set(prompt)
                         except RuntimeError as e:
