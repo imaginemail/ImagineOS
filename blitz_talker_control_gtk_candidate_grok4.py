@@ -1056,6 +1056,9 @@ class BlitzControl(Gtk.Window):
                     break
 
                 try:
+                    # Single activate to raise this exact window
+                    subprocess.run(['xdotool', 'windowactivate', wid], capture_output=True, text=True)
+
                     # Save mouse
                     mouse_cmd = ['xdotool', 'getmouselocation', '--shell']
                     result = subprocess.run(mouse_cmd, capture_output=True, text=True)
