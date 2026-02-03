@@ -1087,6 +1087,7 @@ STAGE_3
         prompt_x_from_left = read_merged_key('PROMPT_X_FROM_LEFT') or '50%'
         prompt_y_from_bottom = read_merged_key('PROMPT_Y_FROM_BOTTOM') or '10%'
 
+        #list_path = read_merged_key('WINDOW_LIST')
         self.gentle_target_op('activate', sync=True)
 
         def _parse_shell_output(text):
@@ -1234,7 +1235,7 @@ STAGE_3
                     # three scrolls to position screen content; more reliable than 'home'
                     click_cmd = ['xdotool', 'click', '--clearmodifiers', '--window', wid, '4', '4', '4']
                     subprocess.run(click_cmd, capture_output=True, text=True)
-                    time.sleep(shot_delay) # 2. after three scrolls
+                    time.sleep(shot_delay)
 
                     # single left click
                     click1_cmd = ['xdotool', 'click', '--clearmodifiers', '--window', wid, '1']
