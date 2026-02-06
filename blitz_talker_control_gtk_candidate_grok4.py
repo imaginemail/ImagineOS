@@ -36,7 +36,23 @@ HOME = os.path.expanduser('~')
 USER_ENV = '.user_env'
 IMAGINE_ENV = '.imagine_env'
 SYSTEM_ENV = '.system_env'
-
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+DEBUG_DIR = os.path.join(SCRIPT_DIR, '.debug')
+os.makedirs(DEBUG_DIR, exist_ok=True)
+DEBUG_FILE = os.path.join(DEBUG_DIR, 'window_matches.log')
+# Clear debug file at start
+open(DEBUG_FILE, 'w').close()
+def log_debug(section, content):
+    debug = int(read_merged_key('DEBUG_DAEMON_ECHO') or 0)
+    if debug:
+        with open(DEBUG_FILE, 'a', encoding='utf-8') as f:
+            f.write(f"[{section}]\n")
+            if isinstance(content, list):
+                for line in content:
+                    f.write(f"{line}\n")
+            else:
+                f.write(f"{content}\n")
+            f.write("\n")
 # -------------------------
 # Utilities for env parsing
 # -------------------------
@@ -72,7 +88,7 @@ def read_merged_key(key):
                     v = stripped.split('=', 1)[1].strip()
                     if (v.startswith('"') and v.endswith('"')) or (v.startswith("'") and v.endswith("'")):
                         v = v[1:-1]
-                    value = v # keep last occurrence across files
+                    value = v # last match wins (user overrides)
     return value
 
 def _unquote_one_line(val):
@@ -171,7 +187,7 @@ def load_flags(key):
         pattern = rf'(?s){re.escape(key)}\s*=\s*["\']\s*(.*?)\s*["\']'
         match = re.search(pattern, content)
         if match:
-            val = match.group(1)  # last match wins (user overrides)
+            val = match.group(1) # last match wins (user overrides)
     if val is None:
         return []
     val = re.sub(r'\\\s*$', '', val)
@@ -271,30 +287,32 @@ def validate_config():
         'DEBUG_DAEMON_ECHO': 'int',
         'PROMPT_X_FROM_LEFT': 'str',
         'PROMPT_Y_FROM_BOTTOM': 'str',
+        'SINGLE_XDOTOOL': 'str', # optional toggle
     }
     missing = []
     invalid = []
     for key, typ in required_keys.items():
         val = read_merged_key(key)
-        if val is None:
+        if val is None and key != 'SINGLE_XDOTOOL':
             missing.append(key)
             continue
-        v = str(val).strip()
-        if v == '':
-            invalid.append(f"{key} (empty)")
-            continue
-        try:
-            if typ == 'int':
-                int(v)
-            elif typ == 'float':
-                float(v)
-            elif typ == 'bool':
-                if v not in ('0', '1', 'true', 'false', 'True', 'False'):
-                    invalid.append(f"{key} (invalid bool: {v})")
-            elif typ == 'str':
-                pass
-        except Exception:
-            invalid.append(f"{key} (invalid {typ}: {v})")
+        if val is not None:
+            v = str(val).strip()
+            if v == '':
+                invalid.append(f"{key} (empty)")
+                continue
+            try:
+                if typ == 'int':
+                    int(v)
+                elif typ == 'float':
+                    float(v)
+                elif typ == 'bool':
+                    if v not in ('0', '1', 'true', 'false', 'True', 'False'):
+                        invalid.append(f"{key} (invalid bool: {v})")
+                elif typ == 'str':
+                    pass
+            except Exception:
+                invalid.append(f"{key} (invalid {typ}: {v})")
     if missing or invalid:
         lines = []
         if missing:
@@ -328,14 +346,16 @@ def clipboard_set(text):
 class BlitzControl(Gtk.Window):
 
     def write_gxi(self):
-        url = self.url_entry.get_text().strip()
-        if not url:
+        url_input = self.url_entry.get_text().strip()
+        urls = get_urls_from_input(url_input)
+        if not urls:
+            return
+        unique_urls = set(u.strip() for u in urls if u.strip())
+        if not unique_urls:
             return
 
-        safe_name = urllib.parse.quote(url, safe='') + '.gxi'
         gxi_dir = os.path.join(HOME, '.imagine_targets')
         os.makedirs(gxi_dir, exist_ok=True)
-        gxi_path = os.path.join(gxi_dir, safe_name)
 
         # Current active prompt from UI
         start, end = self.prompt_buffer.get_bounds()
@@ -344,28 +364,36 @@ class BlitzControl(Gtk.Window):
         # Env prompts for STAGE_U
         env_prompts = load_user_prompts()
 
-        created = datetime.datetime.now().strftime('%Y-%m-%d %H:%M')
-
         stage_u = '# STAGE_U: Unsorted / Legacy Prompts\n'
         if env_prompts:
             stage_u += f'@{env_prompts[0]}\n' if env_prompts else ''
             for p in env_prompts:
                 stage_u += f'{p}\n'
-
-        skeleton = f"""TARGET_URL={url}
+        created = datetime.datetime.now().strftime('%Y-%m-%d %H:%M')
+        for url in unique_urls:
+            safe_name = urllib.parse.quote(url, safe='') + '.gxi'
+            gxi_path = os.path.join(gxi_dir, safe_name)
+            fired_stage = "U" if not os.path.exists(gxi_path) else "1"
+            stage_marker = f"STAGE_{fired_stage}"
+            history_marker = f".history_{fired_stage}"
+            at_line = f'@{active_prompt}' if active_prompt else '@'
+            append_line = active_prompt if active_prompt else ''
+            if not os.path.exists(gxi_path):
+                # New file: fired prompt in STAGE_U (with env_prompts)
+                skeleton = f"""TARGET_URL={url}
 TARGET_BORN={created}
 TARGET_DESC=a freeform text block with a reasonable character limit, newlines allowed
-
-(blank prompt special characters; ~ = xdotool key ctrl-a, Del, Return, # = xdotool key return. activated by @ in front, same as stages prompts are.)
+(blank prompt special characters; ~ = xdotool key ctrl+a, Del, Return, # = xdotool key return. activated by @ in front, same as stages prompts are.)
 ~
 #
 
-{stage_u}
+{stage_u.rstrip()}
 
-STAGE_0
-@{active_prompt}
+{at_line}
 
-.history_0
+{history_marker}
+
+{append_line}
 
 STAGE_1
 
@@ -379,30 +407,46 @@ STAGE_3
 
 .history_3
 """
-
-        if not os.path.exists(gxi_path):
-            with open(gxi_path, 'w', encoding='utf-8') as f:
-                f.write(skeleton)
-        else:
-            # Update active in STAGE_0, append to .history_0
-            lines = []
-            in_history_0 = False
-            with open(gxi_path, 'r', encoding='utf-8') as f:
-                for line in f:
-                    if line.strip() == '.history_0':
-                        in_history_0 = True
-                    if in_history_0 and line.strip().startswith('STAGE_'):
-                        in_history_0 = False
-                    if line.strip().startswith('@'):
-                        line = f'@{active_prompt}\n' if active_prompt else '@\n'
-                    lines.append(line)
-
-            # Append fired prompt to history
-            lines.append(f'{active_prompt}\n' if active_prompt else '\n')
-
-            with open(gxi_path, 'w', encoding='utf-8') as f:
-                f.writelines(lines)
-
+                with open(gxi_path, 'w', encoding='utf-8') as f:
+                    f.write(skeleton)
+            else:
+                # Existing file: update/add fired_stage block
+                lines = []
+                stage_found = False
+                history_index = None
+                with open(gxi_path, 'r', encoding='utf-8') as f:
+                    for raw_line in f:
+                        line = raw_line.rstrip('\n')
+                        lines.append(line)
+                        stripped = line.strip()
+                        if stripped == stage_marker:
+                            stage_found = True
+                        if stage_found and stripped.startswith('@'):
+                            lines[-1] = at_line
+                        if stripped == history_marker:
+                            history_index = len(lines) - 1
+                # Append to history
+                if history_index is not None:
+                    lines.insert(history_index + 1, append_line)
+                else:
+                    # Add full block at end if missing
+                    lines += [
+                        '',
+                        stage_marker,
+                        at_line,
+                        history_marker,
+                        append_line
+                    ]
+                # If no @ after stage, add it (safety)
+                if stage_found:
+                    # Find stage index, check next line
+                    for i, line in enumerate(lines):
+                        if line.strip() == stage_marker:
+                            if i+1 >= len(lines) or not lines[i+1].strip().startswith('@'):
+                                lines.insert(i+1, at_line)
+                            break
+                with open(gxi_path, 'w', encoding='utf-8') as f:
+                    f.writelines(line + '\n' for line in lines)
     def __init__(self):
         super().__init__(title=".Blitz Talker.")
         self.set_keep_above(True)
@@ -747,10 +791,7 @@ STAGE_3
 
         # Kill old target windows
         target = read_merged_key('BROWSER')
-
-        # --- DEBUG INSERT ---
-        #debug = int(read_merged_key('DEBUG_DAEMON_ECHO'))
-        debug = 0
+        debug = int(read_merged_key('DEBUG_DAEMON_ECHO') or 0)
         if debug:
             direct_browser = read_key(SYSTEM_ENV, 'BROWSER', '(not set in .system_env)')
             msg = (
@@ -764,12 +805,9 @@ STAGE_3
                 '-center',
                 '-buttons', 'OK:0'
             ])
-            # --- END DEBUG INSERT ---
-
-        file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), read_merged_key('WINDOW_LIST'))
-        if os.path.exists(file_path):
-            self.gentle_target_op('kill', sync=True)
-
+        # DEBUG: Show what we're about to pkill
+        if debug:
+            log_debug("STAGE - pkill -f", target)
         try:
             subprocess.run(['pkill', '-f', target], check=False)
         except Exception:
@@ -797,15 +835,13 @@ STAGE_3
         head_flags = load_flags('BROWSER_FLAGS_HEAD')
         middle_flags = load_flags('BROWSER_FLAGS_MIDDLE')
         tail_flags = load_flags('BROWSER_FLAGS_TAIL')
-
-        print("Browser executable:", shlex.quote(browser))
-        print("Head flags:", ' '.join(shlex.quote(f) for f in head_flags) or "(none)")
-        print("Middle flags:", ' '.join(shlex.quote(f) for f in middle_flags) or "(none)")
-        print("Tail flags:", ' '.join(shlex.quote(f) for f in tail_flags) or "(none)")
-
-        cmd_base_str = ' '.join(shlex.quote(p) for p in cmd_base)
-        print("Base command:", cmd_base_str)
-
+        if debug:
+            print("Browser executable:", shlex.quote(browser))
+            print("Head flags:", ' '.join(shlex.quote(f) for f in head_flags) or "(none)")
+            print("Middle flags:", ' '.join(shlex.quote(f) for f in middle_flags) or "(none)")
+            print("Tail flags:", ' '.join(shlex.quote(f) for f in tail_flags) or "(none)")
+            cmd_base_str = ' '.join(shlex.quote(p) for p in cmd_base)
+            print("Base command:", cmd_base_str)
         for i in range(num):
             url = urls[i % len(urls)]
             cmd = cmd_base + [url]
@@ -815,9 +851,9 @@ STAGE_3
 
             # Echo the precise final command
             cmd_str = ' '.join(shlex.quote(p) for p in cmd)
-            print(f"Launching window {i+1} with URL: {url}")
-            print("Full command:", cmd_str)
-
+            if debug:
+                print(f"Launching window {i+1} with URL: {url}")
+                print("Full command:", cmd_str)
             try:
                 subprocess.Popen(cmd, stderr=subprocess.DEVNULL)
             except Exception as e:
@@ -832,6 +868,37 @@ STAGE_3
         self.save_all()
         if read_merged_key('FIRE_MODE') == 'N':
             update_env(IMAGINE_ENV, 'FIRE_MODE', 'Y')
+            # --- NEW: Stack all windows to center (configurable via offsets) ---
+            try:
+                output = subprocess.check_output(['xdotool', 'getdisplaygeometry']).decode().strip()
+                sw, sh = map(int, output.split())
+            except Exception:
+                sw, sh = 1920, 1080
+            target_width = int(read_merged_key('DEFAULT_WIDTH'))
+            target_height = int(read_merged_key('DEFAULT_HEIGHT'))
+            center_x = (sw - target_width) // 2
+            center_y = (sh - target_height) // 2
+            offset_x_val = read_merged_key('FIRE_STACK_X_OFFSET')
+            offset_x = int(offset_x_val) if offset_x_val is not None else 0
+            offset_y_val = read_merged_key('FIRE_STACK_Y_OFFSET')
+            offset_y = int(offset_y_val) if offset_y_val is not None else 0
+            stack_x = center_x + offset_x
+            stack_y = center_y + offset_y
+            live_windows_file = read_merged_key('WINDOW_LIST')
+            if live_windows_file:
+                live_windows_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), live_windows_file) if not os.path.isabs(live_windows_file) else live_windows_file
+                if os.path.exists(live_windows_file):
+                    with open(live_windows_file, 'r', encoding='utf-8') as f:
+                        window_ids = [line.strip() for line in f if line.strip()]
+                    if window_ids:
+                        # Single chained size + move per window
+                        for wid in window_ids:
+                            subprocess.run([
+                                'xdotool',
+                                'windowsize', '--sync', wid, str(target_width), str(target_height),
+                                'windowmove', wid, str(stack_x), str(stack_y)
+                            ], capture_output=True)
+            # --- END NEW ---
             self.daemon_thread = threading.Thread(target=self.daemon_thread_func, daemon=True)
             self.daemon_thread.start()
             self.update_fire_button()
@@ -870,16 +937,11 @@ STAGE_3
     def on_quit(self, widget):
         self.save_all()
         target = read_merged_key('BROWSER')
-
-        file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), read_merged_key('WINDOW_LIST'))
-        if os.path.exists(file_path):
-            self.gentle_target_op('kill', sync=True)
-
-        try:
-            subprocess.run(['pkill', '-f', target], check=False)
-        except Exception:
-            pass
-
+        debug = int(read_merged_key('DEBUG_DAEMON_ECHO') or 0)
+        if debug:
+            print(f"DEBUG QUIT: About to pkill -f {target}")
+            log_debug("QUIT - pkill -f", target)
+        subprocess.run(['pkill', '-f', target], check=False)
         file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), read_merged_key('WINDOW_LIST'))
         if os.path.exists(file_path):
             os.remove(file_path)
@@ -888,6 +950,9 @@ STAGE_3
 
     def grid_windows(self, expected_num):
         patterns = [p.strip().strip('"').strip("'").lower() for p in read_merged_key('WINDOW_PATTERNS').split(',') if p.strip()]
+        debug = int(read_merged_key('DEBUG_DAEMON_ECHO') or 0)
+        if debug:
+            log_debug("GRID - Patterns Used", patterns)
 
         # Cache the repeated delay value once at the start of gridding
         grid_start_delay = float(read_merged_key('GRID_START_DELAY'))
@@ -917,6 +982,17 @@ STAGE_3
 
             if matched:
                 last_matched = matched[:]
+            matched = sorted(matched, key=int)
+
+            if debug:
+                matched_titles = []
+                for wid in matched:
+                    try:
+                        title = subprocess.check_output(['xdotool', 'getwindowname', wid], text=True).strip()
+                        matched_titles.append(f"{wid}: {title}")
+                    except:
+                        matched_titles.append(f"{wid}: <title failed>")
+                log_debug(f"GRID Attempt {attempt}", matched_titles)
 
             if len(matched) >= expected_num:
                 self._grid_ids(matched)
@@ -925,6 +1001,7 @@ STAGE_3
 
             if stagnant_count >= stagnant_limit:
                 if last_matched:
+                    last_matched = sorted(last_matched, key=int)
                     self._grid_ids(last_matched)
                 self.status_label.set_text("Ready")
                 return False
@@ -932,6 +1009,7 @@ STAGE_3
             time.sleep(grid_start_delay)
 
         if last_matched:
+            last_matched = sorted(last_matched, key=int)
             self._grid_ids(last_matched)
         self.status_label.set_text("Ready")
         return False
@@ -956,7 +1034,7 @@ STAGE_3
         n = len(ids)
         if n == 0:
             return
-
+        ids = sorted(ids, key=int)
         effective_step = max(1, int(target_width * (100 - target_overlap) / 100))
         max_cols_by_width = 1 + (available_width - target_width) // effective_step if available_width >= target_width else 1
 
@@ -1008,10 +1086,9 @@ STAGE_3
                 x = int(x_start + c * step_x)
                 y = int(y_start + r * step_y)
                 try:
-                    cmd = ['xdotool', 'windowsize', wid, str(target_width), str(target_height)]
+                    cmd = ['xdotool', 'windowsize', wid, str(target_width), str(target_height),
+                           'windowmove', wid, str(x), str(y)]
                     subprocess.run(cmd, capture_output=True, text=True)
-                    move_cmd = ['xdotool', 'windowmove', wid, str(x), str(y)]
-                    subprocess.run(move_cmd, capture_output=True, text=True)
                 except Exception as e:
                     msg = f"Failed to size/move window {wid}:\n\nError: {e}"
                     subprocess.call(['gxmessage', msg, '-title', 'Grid Error', '-center', '-buttons', 'OK:0'])
@@ -1024,9 +1101,8 @@ STAGE_3
 
         auto_fire_val = read_merged_key('AUTO_FIRE')
         if auto_fire_val in ('1', 'Y', 'true', 'True'):
-            time.sleep(5)  # hard-coded test delay
-            self.on_fire(None)  # trigger same as FIRE button click
-
+            time.sleep(5) # hard-coded test delay
+            self.on_fire(None) # trigger same as FIRE button click
     def gentle_target_op(self, op_type, sync=True, delay=None):
         """
         Unified window operation: activate or kill windows from list.
@@ -1049,7 +1125,16 @@ STAGE_3
 
         if not window_ids:
             return
-
+        debug = int(read_merged_key('DEBUG_DAEMON_ECHO') or 0)
+        if debug:
+            kill_titles = []
+            for wid in window_ids:
+                try:
+                    title = subprocess.check_output(['xdotool', 'getwindowname', wid], text=True).strip()
+                    kill_titles.append(f"{wid}: {title}")
+                except:
+                    kill_titles.append(f"{wid}: <title failed>")
+            log_debug("GENTLE KILL - IDs + Titles", kill_titles)
         for wid in window_ids:
             # Always activate first (with optional sync)
             sync_flag = '--sync' if sync else ''
@@ -1084,26 +1169,26 @@ STAGE_3
         inter_window_delay = float(inter_window_delay_val) if inter_window_delay_val else 0.0
         shot_delay_val = read_merged_key('SHOT_DELAY')
         shot_delay = float(shot_delay_val) if shot_delay_val else 0.0
+        single_xdotool = read_merged_key('SINGLE_XDOTOOL') in ('Y', '1', 'true', 'True')
+        debug = int(read_merged_key('DEBUG_DAEMON_ECHO') or 0)
+
+        # Prompt fetched once at start
+        start, end = self.prompt_buffer.get_bounds()
+        prompt = self.prompt_buffer.get_text(start, end, False).strip()
+        target_width = int(read_merged_key('DEFAULT_WIDTH'))
+        target_height = int(read_merged_key('DEFAULT_HEIGHT'))
         prompt_x_from_left = read_merged_key('PROMPT_X_FROM_LEFT') or '50%'
         prompt_y_from_bottom = read_merged_key('PROMPT_Y_FROM_BOTTOM') or '10%'
-
-        #list_path = read_merged_key('WINDOW_LIST')
-        self.gentle_target_op('activate', sync=True)
-
-        def _parse_shell_output(text):
-            d = {}
-            for line in text.splitlines():
-                line = line.strip()
-                if not line:
-                    continue
-                if '=' in line:
-                    k, v = line.split('=', 1)
-                elif ':' in line:
-                    k, v = line.split(':', 1)
-                else:
-                    continue
-                d[k.strip().upper()] = v.strip()
-            return d
+        if '%' in prompt_x_from_left:
+            click_x = int(target_width * int(prompt_x_from_left.rstrip('%')) / 100)
+        else:
+            click_x = int(prompt_x_from_left)
+        if '%' in prompt_y_from_bottom:
+            pixels_from_bottom = int(target_height * int(prompt_y_from_bottom.rstrip('%')) / 100)
+        else:
+            pixels_from_bottom = int(prompt_y_from_bottom)
+        click_y = target_height - pixels_from_bottom
+        #self.gentle_target_op('activate', sync=True)
 
         def update_status(text):
             GLib.idle_add(lambda: self.status_label.set_text(text) or False)
@@ -1130,10 +1215,6 @@ STAGE_3
             with open(live_windows_file, 'r', encoding='utf-8') as f:
                 window_ids = [line.strip() for line in f if line.strip()]
 
-            # Current active prompt from UI (single shot now)
-            start, end = self.prompt_buffer.get_bounds()
-            prompt = self.prompt_buffer.get_text(start, end, False).strip()
-
             if not prompt:
                 continue
 
@@ -1142,119 +1223,17 @@ STAGE_3
                     break
 
                 try:
-                    # Single activate to raise this exact window
-                    subprocess.run(['xdotool', 'windowactivate', wid], capture_output=True, text=True)
-
-                    # Save mouse
-                    mouse_cmd = ['xdotool', 'getmouselocation', '--shell']
-                    result = subprocess.run(mouse_cmd, capture_output=True, text=True)
-                    mouse_dict = _parse_shell_output(result.stdout)
-
-                    if (result.returncode != 0 or
-                        not mouse_dict or
-                        'X' not in mouse_dict or
-                        'Y' not in mouse_dict):
-                        cmd_str = ' '.join(shlex.quote(p) for p in mouse_cmd)
-                        msg = (
-                            f"ERROR: Failed to get mouse location for window ID {wid}\n\n"
-                            f"Command executed:\n{cmd_str}\n\n"
-                            f"Return code: {result.returncode}\n"
-                            f"stdout:\n{result.stdout.strip() or '(empty)'}\n\n"
-                            f"stderr:\n{result.stderr.strip() or '(empty)'}\n\n"
-                            f"Parsed dict:\n{mouse_dict}"
-                        )
-                        subprocess.call([
-                            'gxmessage', msg,
-                            '-title', 'xdotool Mouse Failure',
-                            '-center', '-buttons', 'OK:0'
-                        ])
-                        saved_x = saved_y = 0
-                    else:
-                        saved_x = int(mouse_dict['X'])
-                        saved_y = int(mouse_dict['Y'])
-
-                    # Get geometry
-                    geom_cmd = ['xdotool', 'getwindowgeometry', '--shell', wid]
-                    result = subprocess.run(geom_cmd, capture_output=True, text=True)
-                    geom_dict = _parse_shell_output(result.stdout)
-
-                    if (result.returncode != 0 or
-                        not geom_dict or
-                        'WIDTH' not in geom_dict or
-                        'HEIGHT' not in geom_dict):
-                        cmd_str = ' '.join(shlex.quote(p) for p in geom_cmd)
-                        msg = (
-                            f"ERROR: Failed to get valid window geometry for window ID {wid}\n\n"
-                            f"Command executed:\n{cmd_str}\n\n"
-                            f"Return code: {result.returncode}\n"
-                            f"stdout:\n{result.stdout.strip() or '(empty)'}\n\n"
-                            f"stderr:\n{result.stderr.strip() or '(empty)'}\n\n"
-                            f"Parsed geometry dict:\n{geom_dict}"
-                        )
-                        subprocess.call([
-                            'gxmessage', msg,
-                            '-title', 'xdotool Geometry Failure',
-                            '-center', '-buttons', 'OK:0'
-                        ])
-
-                    width = int(geom_dict['WIDTH'])
-                    height = int(geom_dict['HEIGHT'])
-
-                    if '%' in prompt_x_from_left:
-                        click_x = int(width * int(prompt_x_from_left.rstrip('%')) / 100)
-                    else:
-                        click_x = int(prompt_x_from_left)
-
-                    if '%' in prompt_y_from_bottom:
-                        pixels_from_bottom = int(height * int(prompt_y_from_bottom.rstrip('%')) / 100)
-                    else:
-                        pixels_from_bottom = int(prompt_y_from_bottom)
-
-                    click_y = height - pixels_from_bottom
-
-                    # Move mouse to prompt location
-                    move_cmd = ['xdotool', 'mousemove', '--window', wid, str(click_x), str(click_y)]
-                    result = subprocess.run(move_cmd, capture_output=True, text=True)
-                    if result.returncode != 0:
-                        cmd_str = ' '.join(shlex.quote(p) for p in move_cmd)
-                        msg = (
-                            f"ERROR: Failed to move mouse in window {wid}\n\n"
-                            f"Command executed:\n{cmd_str}\n\n"
-                            f"Return code: {result.returncode}\n"
-                            f"stdout:\n{result.stdout.strip() or '(empty)'}\n\n"
-                            f"stderr:\n{result.stderr.strip() or '(empty)'}"
-                        )
-                        subprocess.call([
-                            'gxmessage', msg,
-                            '-title', 'xdotool Mouse Failure',
-                            '-center', '-buttons', 'OK:0'
-                        ])
-
-                    self.set_keep_above(False)
-
-                    # three scrolls to position screen content; more reliable than 'home'
-                    click_cmd = ['xdotool', 'click', '--clearmodifiers', '--window', wid, '4', '4', '4']
-                    subprocess.run(click_cmd, capture_output=True, text=True)
-                    time.sleep(shot_delay)
-
-                    # single left click
-                    click1_cmd = ['xdotool', 'click', '--clearmodifiers', '--window', wid, '1']
-                    subprocess.run(click1_cmd, capture_output=True, text=True)
-                    time.sleep(shot_delay)
-
-                    # Single paste (no burst)
+                    if debug:
+                        active = subprocess.check_output(['xdotool', 'getactivewindow'], text=True).strip()
+                        print(f"DEBUG: Round {round_num} Window {idx} ({wid}): ACTIVE BEFORE = {active}")
+                    # Build interaction commands
+                    interaction_cmds = [
+                        'mousemove', '--window', wid, str(click_x), str(click_y),
+                        'click', '--repeat', '3', '4', # three wheel downs
+                        'click', '--clearmodifiers', '--window', wid, '1'
+                    ]
                     success = False
-                    if prompt == '~':
-                        key_cmd = ['xdotool', 'key', '--clearmodifiers', '--window', wid, 'ctrl+a', 'Delete', 'Return']
-                        proc_key = subprocess.run(key_cmd, capture_output=True, text=True)
-                        if proc_key.returncode == 0:
-                            success = True
-                    elif prompt == '#':
-                        key_cmd = ['xdotool', 'key', '--clearmodifiers', '--window', wid, 'Return']
-                        proc_key = subprocess.run(key_cmd, capture_output=True, text=True)
-                        if proc_key.returncode == 0:
-                            success = True
-                    else:
+                    if prompt != '~' and prompt != '#':
                         try:
                             clipboard_set(prompt)
                         except RuntimeError as e:
@@ -1272,67 +1251,76 @@ STAGE_3
                                 clipboard_set('')
                             except:
                                 pass
-                            # skip delay on clipboard fail
                         else:
-                            key_cmd = ['xdotool', 'key', '--clearmodifiers', '--window', wid, 'ctrl+a', 'ctrl+v', 'Return']
-                            proc_key = subprocess.run(key_cmd, capture_output=True, text=True)
+                            interaction_cmds += ['key', '--clearmodifiers', '--window', wid, 'ctrl+a', 'ctrl+v', 'Return']
+                            success = True
+                    else:
+                        if prompt == '~':
+                            interaction_cmds += ['key', '--clearmodifiers', '--window', wid, 'ctrl+a', 'Delete', 'Return']
+                        elif prompt == '#':
+                            interaction_cmds += ['key', '--clearmodifiers', '--window', wid, 'Return']
+                        success = True
+
+                    # Execute: single chained or separate
+                    if single_xdotool:
+                        full_cmd = ['xdotool'] + interaction_cmds
+                        proc = subprocess.run(full_cmd, capture_output=True, text=True)
+                        if proc.returncode != 0 and prompt != '~' and prompt != '#':
+                            success = False
+                            cmd_str = ' '.join(shlex.quote(p) for p in full_cmd)
+                            msg = (
+                                f"ERROR: Chained xdotool failed in window {wid}\n\n"
+                                f"Command: {cmd_str}\n\n"
+                                f"Return code: {proc.returncode}\n"
+                                f"stdout: {proc.stdout.strip() or '(empty)'}\n"
+                                f"stderr: {proc.stderr.strip() or '(empty)'}"
+                            )
+                            subprocess.call(['gxmessage', msg, '-title', 'xdotool Failure', '-center', '-buttons', 'OK:0'])
+                    else:
+                        subprocess.run(['xdotool', 'mousemove', '--window', wid, str(click_x), str(click_y)], capture_output=True)
+                        subprocess.run(['xdotool', 'click', '--repeat', '3', '4'], capture_output=True)
+                        subprocess.run(['xdotool', 'click', '--clearmodifiers', '--window', wid, '1'], capture_output=True)
+                        if prompt != '~' and prompt != '#':
+                            proc_key = subprocess.run(['xdotool', 'key', '--clearmodifiers', '--window', wid, 'ctrl+a', 'ctrl+v', 'Return'], capture_output=True, text=True)
                             if proc_key.returncode != 0:
-                                cmd_str = ' '.join(shlex.quote(p) for p in key_cmd)
+                                success = False
+                                cmd_str = 'xdotool key --clearmodifiers --window ' + wid + ' ctrl+a ctrl+v Return'
                                 msg = (
                                     f"ERROR: Paste key sequence failed in window {wid}\n\n"
-                                    f"Command executed:\n{cmd_str}\n\n"
+                                    f"Command: {cmd_str}\n\n"
                                     f"Return code: {proc_key.returncode}\n"
-                                    f"stdout:\n{proc_key.stdout.strip() or '(empty)'}\n\n"
-                                    f"stderr:\n{proc_key.stderr.strip() or '(empty)'}"
+                                    f"stdout: {proc_key.stdout.strip() or '(empty)'}\n"
+                                    f"stderr: {proc_key.stderr.strip() or '(empty)'}"
                                 )
-                                subprocess.call([
-                                    'gxmessage', msg,
-                                    '-title', 'xdotool Key Failure',
-                                    '-center', '-buttons', 'OK:0'
-                                ])
-                            else:
-                                success = True
+                                subprocess.call(['gxmessage', msg, '-title', 'xdotool Key Failure', '-center', '-buttons', 'OK:0'])
+                        else:
+                            key_cmd = interaction_cmds[-4:]
+                            proc_key = subprocess.run(['xdotool'] + key_cmd, capture_output=True, text=True)
+                            if proc_key.returncode != 0:
+                                success = False
+                    if debug:
+                        active = subprocess.check_output(['xdotool', 'getactivewindow'], text=True).strip()
+                        print(f"DEBUG: Round {round_num} Window {idx} ({wid}): ACTIVE AFTER = {active} | SUCCESS = {success}")
+
+                    time.sleep(shot_delay)
 
                     if success:
-                        time.sleep(shot_delay)
-
-                        # Write/update .gxi after each successful shot
                         self.write_gxi()
 
                     total_shots += 1
+
+                    time.sleep(inter_window_delay)
+
                     update_status(f"Firing round {round_num}/{fire_count} — {total_shots} shots fired")
-
-                    # restore mouse
-                    restore_cmd = ['xdotool', 'mousemove', str(saved_x), str(saved_y)]
-                    result = subprocess.run(restore_cmd, capture_output=True, text=True)
-                    if result.returncode != 0:
-                        cmd_str = ' '.join(shlex.quote(p) for p in restore_cmd)
-                        msg = (
-                            f"ERROR: Failed to restore mouse position\n\n"
-                            f"Command executed:\n{cmd_str}\n\n"
-                            f"Return code: {result.returncode}\n"
-                            f"stdout:\n{result.stdout.strip() or '(empty)'}\n\n"
-                            f"stderr:\n{result.stderr.strip() or '(empty)'}"
-                        )
-                        subprocess.call([
-                            'gxmessage', msg,
-                            '-title', 'xdotool Mouse Restore Failure',
-                            '-center', '-buttons', 'OK:0'
-                        ])
-
-                    self.set_keep_above(True)
-
                 except Exception as e:
                     msg = f"Unexpected error processing window {wid}:\n\n{e}"
                     subprocess.call(['gxmessage', msg, '-title', 'Daemon Error', '-center', '-buttons', 'OK:0'])
-
-                # Inter-window delay: pause after finishing one window (success or error) before starting the next
-                time.sleep(inter_window_delay)
 
         update_status(f"Done — {total_shots} shots fired")
         update_env(IMAGINE_ENV, 'FIRE_MODE', 'N')
         GLib.idle_add(self.update_fire_button)
         GLib.timeout_add(5000, lambda: self.status_label.set_text("Ready") or False)
+        GLib.idle_add(lambda: self.grid_windows(int(read_merged_key('STAGE_COUNT'))) or False)
 
 if __name__ == '__main__':
     # Enforce strict validation: fail loudly and immediately.
