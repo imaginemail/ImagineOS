@@ -111,7 +111,6 @@ def load_user_prompts(user_env_path=USER_ENV):
     Return a list of prompts found in .user_env.
     Behavior:
       - Each line that starts with PROMPT= yields one prompt entry.
-      - PROMPT= (empty) yields one empty-string prompt (explicit).
       - Quoted values are unquoted; any embedded newlines are collapsed to spaces.
     """
     prompts = []
@@ -158,7 +157,7 @@ def load_env_multiline(path):
 def choose_prompts(system_env_path=SYSTEM_ENV, user_env_path=USER_ENV):
     """
     Precedence:
-      1. PROMPT lines in user_env (one-per-line) -> return list (even if contains empty string)
+      1. PROMPT lines in user_env (one-per-line) -> return list
       2. DEFAULT_PROMPT in user_env -> single prompt (converted to single-line)
       3. DEFAULT_PROMPT in system_env -> single prompt
       4. else -> [''] (single explicit empty prompt)
@@ -272,7 +271,6 @@ def validate_config():
         'GRID_START_DELAY': 'float',
         'STAGE_DELAY': 'float',
         'ROUND_DELAY': 'float',
-        'BURST_DELAY': 'float',
         'INTER_WINDOW_DELAY': 'float',
         'TARGET_OP_DELAY': 'float',
         'PANEL_DEFAULT_TITLE': 'str',
@@ -281,7 +279,6 @@ def validate_config():
         'PANEL_DEFAULT_X_OFFSET': 'int',
         'PANEL_DEFAULT_Y_OFFSET': 'int',
         'STAGE_COUNT': 'int',
-        'BURST_COUNT': 'int',
         'FIRE_COUNT': 'int',
         'FIRE_MODE': 'str',
         'DEBUG_DAEMON_ECHO': 'int',
@@ -538,19 +535,9 @@ STAGE_3
         pick_prompt_btn.connect("clicked", self.on_pick_prompt_file)
         prompt_box.pack_start(pick_prompt_btn, False, False, 0)
 
-        # Horizontal row for the three spin controls
+        # Horizontal row for the spin controls
         controls_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         box.pack_start(controls_box, False, False, 0)
-
-        # Burst
-        burst_hbox = Gtk.Box(spacing=2)
-        burst_label = Gtk.Label(label="Burst:")
-        burst_hbox.pack_start(burst_label, False, False, 0)
-
-        burst_adj = Gtk.Adjustment(value=int(read_merged_key('BURST_COUNT')), lower=1, upper=200, step_increment=1)
-        self.burst_spin = Gtk.SpinButton(adjustment=burst_adj)
-        burst_hbox.pack_start(self.burst_spin, True, True, 0)
-        controls_box.pack_start(burst_hbox, True, True, 0)
 
         # Rounds
         fire_hbox = Gtk.Box(spacing=2)
@@ -618,7 +605,6 @@ STAGE_3
         self._loaded_snapshot = {
             'DEFAULT_URL': self.url_entry.get_text(),
             'PROMPTS': initial_prompts_text,
-            'BURST_COUNT': str(self.burst_spin.get_value_as_int()),
             'FIRE_COUNT': str(self.fire_spin.get_value_as_int()),
             'STAGE_COUNT': str(self.stage_spin.get_value_as_int()),
         }
@@ -645,7 +631,6 @@ STAGE_3
         current_url = self.url_entry.get_text()
         start_iter, end_iter = self.prompt_buffer.get_bounds()
         current_prompts = self.prompt_buffer.get_text(start_iter, end_iter, False)
-        current_burst = str(int(self.burst_spin.get_value()))
         current_fire = str(int(self.fire_spin.get_value()))
         current_stage = str(int(self.stage_spin.get_value()))
 
@@ -729,21 +714,7 @@ STAGE_3
                     with open(USER_ENV, 'w', encoding='utf-8') as f:
                         f.writelines(lines)
 
-        # --- BURST_COUNT and FIRE_COUNT to .imagine_env ---
-        sys_burst = system_val('BURST_COUNT')
-        if current_burst != self._loaded_snapshot.get('BURST_COUNT', ''):
-            if sys_burst is None or current_burst != sys_burst:
-                update_env(IMAGINE_ENV, 'BURST_COUNT', current_burst)
-            else:
-                if os.path.exists(IMAGINE_ENV):
-                    lines = []
-                    with open(IMAGINE_ENV, 'r', encoding='utf-8') as f:
-                        for line in f:
-                            if not line.strip().startswith('BURST_COUNT='):
-                                lines.append(line)
-                    with open(IMAGINE_ENV, 'w', encoding='utf-8') as f:
-                        f.writelines(lines)
-
+        # --- FIRE_COUNT to .imagine_env ---
         sys_fire = system_val('FIRE_COUNT')
         if current_fire != self._loaded_snapshot.get('FIRE_COUNT', ''):
             if sys_fire is None or current_fire != sys_fire:
@@ -762,7 +733,6 @@ STAGE_3
         self._loaded_snapshot.update({
             'DEFAULT_URL': current_url,
             'PROMPTS': current_prompts,
-            'BURST_COUNT': current_burst,
             'FIRE_COUNT': current_fire,
             'STAGE_COUNT': current_stage,
         })
@@ -816,10 +786,7 @@ STAGE_3
 
         # Kill old target windows
         target = read_merged_key('BROWSER')
-
-        # --- DEBUG INSERT ---
-        #debug = int(read_merged_key('DEBUG_DAEMON_ECHO'))
-        debug = 0
+        debug = int(read_merged_key('DEBUG_DAEMON_ECHO') or 0)
         if debug:
             direct_browser = read_key(SYSTEM_ENV, 'BROWSER', '(not set in .system_env)')
             msg = (
@@ -1157,15 +1124,17 @@ STAGE_3
 
         # Cache repeated values once at the start of the daemon
         round_delay = float(read_merged_key('ROUND_DELAY'))
-        burst_count = int(read_merged_key('BURST_COUNT'))
-        burst_delay_val = read_merged_key('BURST_DELAY')
-        burst_delay = float(burst_delay_val) if burst_delay_val else 0.05
-        target_op_delay_val = read_merged_key('TARGET_OP_DELAY')
-        target_op_delay = float(target_op_delay_val) if target_op_delay_val else 0.1
         inter_window_delay_val = read_merged_key('INTER_WINDOW_DELAY')
         inter_window_delay = float(inter_window_delay_val) if inter_window_delay_val else 0.0
         shot_delay_val = read_merged_key('SHOT_DELAY')
         shot_delay = float(shot_delay_val) if shot_delay_val else 0.0
+        # Prompt fetched once at start
+        start, end = self.prompt_buffer.get_bounds()
+        prompt = self.prompt_buffer.get_text(start, end, False).strip()
+
+        target_width = int(read_merged_key('DEFAULT_WIDTH'))
+        target_height = int(read_merged_key('DEFAULT_HEIGHT'))
+
         prompt_x_from_left = read_merged_key('PROMPT_X_FROM_LEFT') or '50%'
         prompt_y_from_bottom = read_merged_key('PROMPT_Y_FROM_BOTTOM') or '10%'
 
@@ -1211,13 +1180,7 @@ STAGE_3
             with open(live_windows_file, 'r', encoding='utf-8') as f:
                 window_ids = [line.strip() for line in f if line.strip()]
 
-            prompts = load_user_prompts()
-            if not prompts or all(not p.strip() for p in prompts):
-                default_prompt = read_merged_key('DEFAULT_PROMPT')
-                if default_prompt:
-                    prompts = [_unquote_one_line(default_prompt)]
-
-            if not prompts:
+            if not prompt:
                 continue
 
             for idx, wid in enumerate(window_ids, start=1):
@@ -1347,10 +1310,39 @@ STAGE_3
                             except:
                                 pass
                         else:
-                            key_cmd = ['xdotool', 'key', '--clearmodifiers', '--window', wid, 'ctrl+a', 'ctrl+v', 'Return']
-                            proc_key = subprocess.run(key_cmd, capture_output=True, text=True)
+                            interaction_cmds += ['key', '--clearmodifiers', '--window', wid, 'ctrl+a', 'ctrl+v', 'Return']
+                            success = True
+                    else:
+                        if prompt == '~':
+                            interaction_cmds += ['key', '--clearmodifiers', '--window', wid, 'ctrl+a', 'Delete', 'Return']
+                        elif prompt == '#':
+                            interaction_cmds += ['key', '--clearmodifiers', '--window', wid, 'Return']
+                        success = True
+
+                    # Execute: single chained or separate
+                    if single_xdotool:
+                        full_cmd = ['xdotool'] + interaction_cmds
+                        proc = subprocess.run(full_cmd, capture_output=True, text=True)
+                        if proc.returncode != 0 and prompt != '~' and prompt != '#':
+                            success = False
+                            cmd_str = ' '.join(shlex.quote(p) for p in full_cmd)
+                            msg = (
+                                f"ERROR: Chained xdotool failed in window {wid}\n\n"
+                                f"Command: {cmd_str}\n\n"
+                                f"Return code: {proc.returncode}\n"
+                                f"stdout: {proc.stdout.strip() or '(empty)'}\n"
+                                f"stderr: {proc.stderr.strip() or '(empty)'}"
+                            )
+                            subprocess.call(['gxmessage', msg, '-title', 'xdotool Failure', '-center', '-buttons', 'OK:0'])
+                    else:
+                        subprocess.run(['xdotool', 'mousemove', '--window', wid, str(click_x), str(click_y)], capture_output=True)
+                        subprocess.run(['xdotool', 'click', '--repeat', '3', '4'], capture_output=True)
+                        subprocess.run(['xdotool', 'click', '--clearmodifiers', '--window', wid, '1'], capture_output=True)
+                        if prompt != '~' and prompt != '#':
+                            proc_key = subprocess.run(['xdotool', 'key', '--clearmodifiers', '--window', wid, 'ctrl+a', 'ctrl+v', 'Return'], capture_output=True, text=True)
                             if proc_key.returncode != 0:
-                                cmd_str = ' '.join(shlex.quote(p) for p in key_cmd)
+                                success = False
+                                cmd_str = 'xdotool key --clearmodifiers --window ' + wid + ' ctrl+a ctrl+v Return'
                                 msg = (
                                     f"ERROR: Paste key sequence failed in window {wid}\n\n"
                                     f"Command executed:\n{cmd_str}\n\n"
