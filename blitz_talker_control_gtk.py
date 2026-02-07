@@ -36,7 +36,23 @@ HOME = os.path.expanduser('~')
 USER_ENV = '.user_env'
 IMAGINE_ENV = '.imagine_env'
 SYSTEM_ENV = '.system_env'
-
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+DEBUG_DIR = os.path.join(SCRIPT_DIR, '.debug')
+os.makedirs(DEBUG_DIR, exist_ok=True)
+DEBUG_FILE = os.path.join(DEBUG_DIR, 'window_matches.log')
+# Clear debug file at start
+open(DEBUG_FILE, 'w').close()
+def log_debug(section, content):
+    debug = int(read_merged_key('DEBUG_DAEMON_ECHO') or 0)
+    if debug:
+        with open(DEBUG_FILE, 'a', encoding='utf-8') as f:
+            f.write(f"[{section}]\n")
+            if isinstance(content, list):
+                for line in content:
+                    f.write(f"{line}\n")
+            else:
+                f.write(f"{content}\n")
+            f.write("\n")
 # -------------------------
 # Utilities for env parsing
 # -------------------------
@@ -322,7 +338,7 @@ def clipboard_set(text):
         raise RuntimeError(f"Failed to set clipboard via xclip: {e}")
 
 # -------------------------
-# Main GUI / daemon class
+# .gxi writer
 # -------------------------
 
 class BlitzControl(Gtk.Window):
@@ -817,12 +833,9 @@ STAGE_3
                 '-center',
                 '-buttons', 'OK:0'
             ])
-            # --- END DEBUG INSERT ---
-
-        file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), read_merged_key('WINDOW_LIST'))
-        if os.path.exists(file_path):
-            self.gentle_target_op('kill', sync=True)
-
+        # DEBUG: Show what we're about to pkill
+        if debug:
+            log_debug("STAGE - pkill -f", target)
         try:
             subprocess.run(['pkill', '-f', target], check=False)
         except Exception:
@@ -845,16 +858,33 @@ STAGE_3
 
         cmd_base = [read_merged_key('BROWSER')] + load_flags('BROWSER_FLAGS_HEAD') + load_flags('BROWSER_FLAGS_MIDDLE') + load_flags('BROWSER_FLAGS_TAIL')
 
+        # Echo flag sections individually
+        browser = read_merged_key('BROWSER')
+        head_flags = load_flags('BROWSER_FLAGS_HEAD')
+        middle_flags = load_flags('BROWSER_FLAGS_MIDDLE')
+        tail_flags = load_flags('BROWSER_FLAGS_TAIL')
+        if debug:
+            print("Browser executable:", shlex.quote(browser))
+            print("Head flags:", ' '.join(shlex.quote(f) for f in head_flags) or "(none)")
+            print("Middle flags:", ' '.join(shlex.quote(f) for f in middle_flags) or "(none)")
+            print("Tail flags:", ' '.join(shlex.quote(f) for f in tail_flags) or "(none)")
+            cmd_base_str = ' '.join(shlex.quote(p) for p in cmd_base)
+            print("Base command:", cmd_base_str)
         for i in range(num):
             url = urls[i % len(urls)]
             cmd = cmd_base + [url]
-            if load_flags('BROWSER_FLAGS_TAIL'):
+            if tail_flags: # reuse the earlier loaded list to avoid extra calls
                 cmd[-2] = cmd[-2] + cmd[-1]
                 cmd.pop()
+
+            # Echo the precise final command
+            cmd_str = ' '.join(shlex.quote(p) for p in cmd)
+            if debug:
+                print(f"Launching window {i+1} with URL: {url}")
+                print("Full command:", cmd_str)
             try:
                 subprocess.Popen(cmd, stderr=subprocess.DEVNULL)
             except Exception as e:
-                cmd_str = ' '.join(shlex.quote(p) for p in cmd)
                 msg = f"Failed to launch browser window:\n\nCommand: {cmd_str}\n\nError: {e}"
                 subprocess.call(['gxmessage', msg, '-title', 'Launch Error', '-center', '-buttons', 'OK:0'])
 
@@ -904,16 +934,11 @@ STAGE_3
     def on_quit(self, widget):
         self.save_all()
         target = read_merged_key('BROWSER')
-
-        file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), read_merged_key('WINDOW_LIST'))
-        if os.path.exists(file_path):
-            self.gentle_target_op('kill', sync=True)
-
-        try:
-            subprocess.run(['pkill', '-f', target], check=False)
-        except Exception:
-            pass
-
+        debug = int(read_merged_key('DEBUG_DAEMON_ECHO') or 0)
+        if debug:
+            print(f"DEBUG QUIT: About to pkill -f {target}")
+            log_debug("QUIT - pkill -f", target)
+        subprocess.run(['pkill', '-f', target], check=False)
         file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), read_merged_key('WINDOW_LIST'))
         if os.path.exists(file_path):
             os.remove(file_path)
@@ -922,6 +947,9 @@ STAGE_3
 
     def grid_windows(self, expected_num):
         patterns = [p.strip().strip('"').strip("'").lower() for p in read_merged_key('WINDOW_PATTERNS').split(',') if p.strip()]
+        debug = int(read_merged_key('DEBUG_DAEMON_ECHO') or 0)
+        if debug:
+            log_debug("GRID - Patterns Used", patterns)
 
         # Cache the repeated delay value once at the start of gridding
         grid_start_delay = float(read_merged_key('GRID_START_DELAY'))
@@ -951,6 +979,17 @@ STAGE_3
 
             if matched:
                 last_matched = matched[:]
+            matched = sorted(matched, key=int)
+
+            if debug:
+                matched_titles = []
+                for wid in matched:
+                    try:
+                        title = subprocess.check_output(['xdotool', 'getwindowname', wid], text=True).strip()
+                        matched_titles.append(f"{wid}: {title}")
+                    except:
+                        matched_titles.append(f"{wid}: <title failed>")
+                log_debug(f"GRID Attempt {attempt}", matched_titles)
 
             if len(matched) >= expected_num:
                 self._grid_ids(matched)
@@ -959,6 +998,7 @@ STAGE_3
 
             if stagnant_count >= stagnant_limit:
                 if last_matched:
+                    last_matched = sorted(last_matched, key=int)
                     self._grid_ids(last_matched)
                 self.status_label.set_text("Ready")
                 return False
@@ -966,6 +1006,7 @@ STAGE_3
             time.sleep(grid_start_delay)
 
         if last_matched:
+            last_matched = sorted(last_matched, key=int)
             self._grid_ids(last_matched)
         self.status_label.set_text("Ready")
         return False
@@ -990,7 +1031,7 @@ STAGE_3
         n = len(ids)
         if n == 0:
             return
-
+        ids = sorted(ids, key=int)
         effective_step = max(1, int(target_width * (100 - target_overlap) / 100))
         max_cols_by_width = 1 + (available_width - target_width) // effective_step if available_width >= target_width else 1
 
@@ -1076,7 +1117,16 @@ STAGE_3
 
         if not window_ids:
             return
-
+        debug = int(read_merged_key('DEBUG_DAEMON_ECHO') or 0)
+        if debug:
+            kill_titles = []
+            for wid in window_ids:
+                try:
+                    title = subprocess.check_output(['xdotool', 'getwindowname', wid], text=True).strip()
+                    kill_titles.append(f"{wid}: {title}")
+                except:
+                    kill_titles.append(f"{wid}: <title failed>")
+            log_debug("GENTLE KILL - IDs + Titles", kill_titles)
         for wid in window_ids:
             # Always activate first (with optional sync)
             sync_flag = '--sync' if sync else ''
