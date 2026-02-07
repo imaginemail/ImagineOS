@@ -24,6 +24,8 @@ import time
 import threading
 import sys
 import gi
+import urllib.parse
+import datetime
 
 gi.require_version('Gtk', '3.0')
 gi.require_version('Gdk', '3.0')
@@ -70,7 +72,7 @@ def read_merged_key(key):
                     v = stripped.split('=', 1)[1].strip()
                     if (v.startswith('"') and v.endswith('"')) or (v.startswith("'") and v.endswith("'")):
                         v = v[1:-1]
-                    value = v # keep last occurrence across files
+                    value = v # last match wins (user overrides)
     return value
 
 def _unquote_one_line(val):
@@ -325,6 +327,108 @@ def clipboard_set(text):
 
 class BlitzControl(Gtk.Window):
 
+    def write_gxi(self):
+        url_input = self.url_entry.get_text().strip()
+        urls = get_urls_from_input(url_input)
+        if not urls:
+            return
+        unique_urls = set(u.strip() for u in urls if u.strip())
+        if not unique_urls:
+            return
+
+        gxi_dir = os.path.join(HOME, '.imagine_targets')
+        os.makedirs(gxi_dir, exist_ok=True)
+
+        # Current active prompt from UI
+        start, end = self.prompt_buffer.get_bounds()
+        active_prompt = self.prompt_buffer.get_text(start, end, False).strip()
+
+        # Env prompts for STAGE_U
+        env_prompts = load_user_prompts()
+
+        stage_u = '# STAGE_U: Unsorted / Legacy Prompts\n'
+        if env_prompts:
+            stage_u += f'@{env_prompts[0]}\n' if env_prompts else ''
+            for p in env_prompts:
+                stage_u += f'{p}\n'
+        created = datetime.datetime.now().strftime('%Y-%m-%d %H:%M')
+        for url in unique_urls:
+            safe_name = urllib.parse.quote(url, safe='') + '.gxi'
+            gxi_path = os.path.join(gxi_dir, safe_name)
+            fired_stage = "U" if not os.path.exists(gxi_path) else "1"
+            stage_marker = f"STAGE_{fired_stage}"
+            history_marker = f".history_{fired_stage}"
+            at_line = f'@{active_prompt}' if active_prompt else '@'
+            append_line = active_prompt if active_prompt else ''
+            if not os.path.exists(gxi_path):
+                # New file: fired prompt in STAGE_U (with env_prompts)
+                skeleton = f"""TARGET_URL={url}
+TARGET_BORN={created}
+TARGET_DESC=a freeform text block with a reasonable character limit, newlines allowed
+(blank prompt special characters; ~ = xdotool key ctrl+a, Del, Return, # = xdotool key return. activated by @ in front, same as stages prompts are.)
+~
+#
+
+{stage_u.rstrip()}
+
+{at_line}
+
+{history_marker}
+
+{append_line}
+
+STAGE_1
+
+.history_1
+
+STAGE_2
+
+.history_2
+
+STAGE_3
+
+.history_3
+"""
+                with open(gxi_path, 'w', encoding='utf-8') as f:
+                    f.write(skeleton)
+            else:
+                # Existing file: update/add fired_stage block
+                lines = []
+                stage_found = False
+                history_index = None
+                with open(gxi_path, 'r', encoding='utf-8') as f:
+                    for raw_line in f:
+                        line = raw_line.rstrip('\n')
+                        lines.append(line)
+                        stripped = line.strip()
+                        if stripped == stage_marker:
+                            stage_found = True
+                        if stage_found and stripped.startswith('@'):
+                            lines[-1] = at_line
+                        if stripped == history_marker:
+                            history_index = len(lines) - 1
+                # Append to history
+                if history_index is not None:
+                    lines.insert(history_index + 1, append_line)
+                else:
+                    # Add full block at end if missing
+                    lines += [
+                        '',
+                        stage_marker,
+                        at_line,
+                        history_marker,
+                        append_line
+                    ]
+                # If no @ after stage, add it (safety)
+                if stage_found:
+                    # Find stage index, check next line
+                    for i, line in enumerate(lines):
+                        if line.strip() == stage_marker:
+                            if i+1 >= len(lines) or not lines[i+1].strip().startswith('@'):
+                                lines.insert(i+1, at_line)
+                            break
+                with open(gxi_path, 'w', encoding='utf-8') as f:
+                    f.writelines(line + '\n' for line in lines)
     def __init__(self):
         super().__init__(title=".Blitz Talker.")
         self.set_keep_above(True)
@@ -647,6 +751,9 @@ class BlitzControl(Gtk.Window):
             'STAGE_COUNT': current_stage,
         })
 
+        # Write/update .gxi with current state
+        self.write_gxi()
+
     def on_pick_url_file(self, widget):
         self.save_all()
         dialog = Gtk.FileChooserDialog(title="Pick URL File", parent=self, action=Gtk.FileChooserAction.OPEN)
@@ -945,6 +1052,8 @@ class BlitzControl(Gtk.Window):
                 f.write(wid + '\n')
         self.gentle_target_op('activate', sync=True)
 
+        # Initial .gxi creation after grid complete
+        self.write_gxi()
     def gentle_target_op(self, op_type, sync=True, delay=None):
         """
         Unified window operation: activate or kill windows from list.
