@@ -178,18 +178,21 @@ def choose_prompts(system_env_path=SYSTEM_ENV, user_env_path=USER_ENV):
 # -------------------------
 
 def load_flags(key):
-    if not os.path.exists(SYSTEM_ENV):
+    val = None
+    for path in (SYSTEM_ENV, IMAGINE_ENV, USER_ENV):
+        if not os.path.exists(path):
+            continue
+        with open(path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        pattern = rf'(?s){re.escape(key)}\s*=\s*["\']\s*(.*?)\s*["\']'
+        match = re.search(pattern, content)
+        if match:
+            val = match.group(1) # last match wins (user overrides)
+    if val is None:
         return []
-    with open(SYSTEM_ENV, 'r', encoding='utf-8') as f:
-        content = f.read()
-    pattern = rf'(?s){re.escape(key)}\s*=\s*["\']\s*(.*?)\s*["\']'
-    match = re.search(pattern, content)
-    if match:
-        val = match.group(1)
-        val = re.sub(r'\\\s*$', '', val)
-        val = re.sub(r'\\\s*\n\s*', ' ', val)
-        return shlex.split(val)
-    return []
+    val = re.sub(r'\\\s*$', '', val)
+    val = re.sub(r'\\\s*\n\s*', ' ', val)
+    return shlex.split(val)
 
 # -------------------------
 # Env updater (existing)
