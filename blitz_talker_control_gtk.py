@@ -287,12 +287,13 @@ def validate_config():
         'DEBUG_DAEMON_ECHO': 'int',
         'PROMPT_X_FROM_LEFT': 'str',
         'PROMPT_Y_FROM_BOTTOM': 'str',
+        'SINGLE_XDOTOOL': 'str', # optional toggle
     }
     missing = []
     invalid = []
     for key, typ in required_keys.items():
         val = read_merged_key(key)
-        if val is None:
+        if val is None and key != 'SINGLE_XDOTOOL':
             missing.append(key)
             continue
         v = str(val).strip()
@@ -1053,14 +1054,14 @@ STAGE_3
                 x = int(x_start + c * step_x)
                 y = int(y_start + r * step_y)
                 try:
-                    cmd = ['xdotool', 'windowsize', wid, str(target_width), str(target_height)]
+                    cmd = ['xdotool', 'windowsize', wid, str(target_width), str(target_height),
+                           'windowmove', wid, str(x), str(y)]
                     subprocess.run(cmd, capture_output=True, text=True)
-                    move_cmd = ['xdotool', 'windowmove', wid, str(x), str(y)]
-                    subprocess.run(move_cmd, capture_output=True, text=True)
                 except Exception as e:
                     msg = f"Failed to size/move window {wid}:\n\nError: {e}"
                     subprocess.call(['gxmessage', msg, '-title', 'Grid Error', '-center', '-buttons', 'OK:0'])
                 f.write(wid + '\n')
+
         self.gentle_target_op('activate', sync=True)
 
         # Initial .gxi creation after grid complete
@@ -1131,6 +1132,7 @@ STAGE_3
         inter_window_delay = float(inter_window_delay_val) if inter_window_delay_val else 0.0
         shot_delay_val = read_merged_key('SHOT_DELAY')
         shot_delay = float(shot_delay_val) if shot_delay_val else 0.0
+        single_xdotool = read_merged_key('SINGLE_XDOTOOL') in ('Y', '1', 'true', 'True')
         # Prompt fetched once at start
         start, end = self.prompt_buffer.get_bounds()
         prompt = self.prompt_buffer.get_text(start, end, False).strip()
@@ -1191,110 +1193,17 @@ STAGE_3
                     break
 
                 try:
-                    # Save mouse
-                    mouse_cmd = ['xdotool', 'getmouselocation', '--shell']
-                    result = subprocess.run(mouse_cmd, capture_output=True, text=True)
-                    mouse_dict = _parse_shell_output(result.stdout)
-
-                    if (result.returncode != 0 or
-                        not mouse_dict or
-                        'X' not in mouse_dict or
-                        'Y' not in mouse_dict):
-                        cmd_str = ' '.join(shlex.quote(p) for p in mouse_cmd)
-                        msg = (
-                            f"ERROR: Failed to get mouse location for window ID {wid}\n\n"
-                            f"Command executed:\n{cmd_str}\n\n"
-                            f"Return code: {result.returncode}\n"
-                            f"stdout:\n{result.stdout.strip() or '(empty)'}\n\n"
-                            f"stderr:\n{result.stderr.strip() or '(empty)'}\n\n"
-                            f"Parsed dict:\n{mouse_dict}"
-                        )
-                        subprocess.call([
-                            'gxmessage', msg,
-                            '-title', 'xdotool Mouse Failure',
-                            '-center', '-buttons', 'OK:0'
-                        ])
-                        saved_x = saved_y = 0
-                    else:
-                        saved_x = int(mouse_dict['X'])
-                        saved_y = int(mouse_dict['Y'])
-
-                    # Get geometry
-                    geom_cmd = ['xdotool', 'getwindowgeometry', '--shell', wid]
-                    result = subprocess.run(geom_cmd, capture_output=True, text=True)
-                    geom_dict = _parse_shell_output(result.stdout)
-
-                    if (result.returncode != 0 or
-                        not geom_dict or
-                        'WIDTH' not in geom_dict or
-                        'HEIGHT' not in geom_dict):
-                        cmd_str = ' '.join(shlex.quote(p) for p in geom_cmd)
-                        msg = (
-                            f"ERROR: Failed to get valid window geometry for window ID {wid}\n\n"
-                            f"Command executed:\n{cmd_str}\n\n"
-                            f"Return code: {result.returncode}\n"
-                            f"stdout:\n{result.stdout.strip() or '(empty)'}\n\n"
-                            f"stderr:\n{result.stderr.strip() or '(empty)'}\n\n"
-                            f"Parsed geometry dict:\n{geom_dict}"
-                        )
-                        subprocess.call([
-                            'gxmessage', msg,
-                            '-title', 'xdotool Geometry Failure',
-                            '-center', '-buttons', 'OK:0'
-                        ])
-
-                    width = int(geom_dict['WIDTH'])
-                    height = int(geom_dict['HEIGHT'])
-
-                    if '%' in prompt_x_from_left:
-                        click_x = int(width * int(prompt_x_from_left.rstrip('%')) / 100)
-                    else:
-                        click_x = int(prompt_x_from_left)
-
-                    if '%' in prompt_y_from_bottom:
-                        pixels_from_bottom = int(height * int(prompt_y_from_bottom.rstrip('%')) / 100)
-                    else:
-                        pixels_from_bottom = int(prompt_y_from_bottom)
-
-                    click_y = height - pixels_from_bottom
-
-                    # Move mouse to prompt location
-                    move_cmd = ['xdotool', 'mousemove', '--window', wid, str(click_x), str(click_y)]
-                    result = subprocess.run(move_cmd, capture_output=True, text=True)
-                    if result.returncode != 0:
-                        cmd_str = ' '.join(shlex.quote(p) for p in move_cmd)
-                        msg = (
-                            f"ERROR: Failed to move mouse in window {wid}\n\n"
-                            f"Command executed:\n{cmd_str}\n\n"
-                            f"Return code: {result.returncode}\n"
-                            f"stdout:\n{result.stdout.strip() or '(empty)'}\n\n"
-                            f"stderr:\n{result.stderr.strip() or '(empty)'}"
-                        )
-                        subprocess.call([
-                            'gxmessage', msg,
-                            '-title', 'xdotool Mouse Failure',
-                            '-center', '-buttons', 'OK:0'
-                        ])
-
-                    self.set_keep_above(False)
-
-                    # three scrolls to position screen content; more reliable than 'home'
-                    click_cmd = ['xdotool', 'click', '--clearmodifiers', '--window', wid, '4', '4', '4']
-                    subprocess.run(click_cmd, capture_output=True, text=True)
-                    time.sleep(shot_delay)
-
-                    # single left click
-                    click1_cmd = ['xdotool', 'click', '--clearmodifiers', '--window', wid, '1']
-                    subprocess.run(click1_cmd, capture_output=True, text=True)
-                    time.sleep(shot_delay)
-
-                    # --- clipboard + paste block ---
-                    for b in range(burst_count):
-                        prompt = prompts[(idx - 1 + b) % len(prompts)]
-                        if prompt is None:
-                            prompt = ''
-
-                        success = False
+                    if debug:
+                        active = subprocess.check_output(['xdotool', 'getactivewindow'], text=True).strip()
+                        print(f"DEBUG: Round {round_num} Window {idx} ({wid}): ACTIVE BEFORE = {active}")
+                    # Build interaction commands
+                    interaction_cmds = [
+                        'mousemove', '--window', wid, str(click_x), str(click_y),
+                        'click', '--repeat', '3', '4', # three wheel downs
+                        'click', '--clearmodifiers', '--window', wid, '1'
+                    ]
+                    success = False
+                    if prompt != '~' and prompt != '#':
                         try:
                             clipboard_set(prompt)
                         except RuntimeError as e:
@@ -1348,45 +1257,31 @@ STAGE_3
                                 cmd_str = 'xdotool key --clearmodifiers --window ' + wid + ' ctrl+a ctrl+v Return'
                                 msg = (
                                     f"ERROR: Paste key sequence failed in window {wid}\n\n"
-                                    f"Command executed:\n{cmd_str}\n\n"
+                                    f"Command: {cmd_str}\n\n"
                                     f"Return code: {proc_key.returncode}\n"
-                                    f"stdout:\n{proc_key.stdout.strip() or '(empty)'}\n\n"
-                                    f"stderr:\n{proc_key.stderr.strip() or '(empty)'}"
+                                    f"stdout: {proc_key.stdout.strip() or '(empty)'}\n"
+                                    f"stderr: {proc_key.stderr.strip() or '(empty)'}"
                                 )
-                                subprocess.call([
-                                    'gxmessage', msg,
-                                    '-title', 'xdotool Key Failure',
-                                    '-center', '-buttons', 'OK:0'
-                                ])
-                            else:
-                                success = True
+                                subprocess.call(['gxmessage', msg, '-title', 'xdotool Key Failure', '-center', '-buttons', 'OK:0'])
+                        else:
+                            key_cmd = interaction_cmds[-4:]
+                            proc_key = subprocess.run(['xdotool'] + key_cmd, capture_output=True, text=True)
+                            if proc_key.returncode != 0:
+                                success = False
+                    if debug:
+                        active = subprocess.check_output(['xdotool', 'getactivewindow'], text=True).strip()
+                        print(f"DEBUG: Round {round_num} Window {idx} ({wid}): ACTIVE AFTER = {active} | SUCCESS = {success}")
 
-                        if success:
-                            time.sleep(shot_delay)
+                    time.sleep(shot_delay)
 
-                        total_shots += 1
-                        update_status(f"Firing round {round_num}/{fire_count} — {total_shots} shots fired")
+                    if success:
+                        self.write_gxi()
 
-                    # restore mouse
-                    restore_cmd = ['xdotool', 'mousemove', str(saved_x), str(saved_y)]
-                    result = subprocess.run(restore_cmd, capture_output=True, text=True)
-                    if result.returncode != 0:
-                        cmd_str = ' '.join(shlex.quote(p) for p in restore_cmd)
-                        msg = (
-                            f"ERROR: Failed to restore mouse position\n\n"
-                            f"Command executed:\n{cmd_str}\n\n"
-                            f"Return code: {result.returncode}\n"
-                            f"stdout:\n{result.stdout.strip() or '(empty)'}\n\n"
-                            f"stderr:\n{result.stderr.strip() or '(empty)'}"
-                        )
-                        subprocess.call([
-                            'gxmessage', msg,
-                            '-title', 'xdotool Mouse Restore Failure',
-                            '-center', '-buttons', 'OK:0'
-                        ])
+                    total_shots += 1
 
-                    self.set_keep_above(True)
+                    time.sleep(inter_window_delay)
 
+                    update_status(f"Firing round {round_num}/{fire_count} — {total_shots} shots fired")
                 except Exception as e:
                     msg = f"Unexpected error processing window {wid}:\n\n{e}"
                     subprocess.call(['gxmessage', msg, '-title', 'Daemon Error', '-center', '-buttons', 'OK:0'])
