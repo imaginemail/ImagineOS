@@ -296,22 +296,23 @@ def validate_config():
         if val is None and key != 'SINGLE_XDOTOOL':
             missing.append(key)
             continue
-        v = str(val).strip()
-        if v == '':
-            invalid.append(f"{key} (empty)")
-            continue
-        try:
-            if typ == 'int':
-                int(v)
-            elif typ == 'float':
-                float(v)
-            elif typ == 'bool':
-                if v not in ('0', '1', 'true', 'false', 'True', 'False'):
-                    invalid.append(f"{key} (invalid bool: {v})")
-            elif typ == 'str':
-                pass
-        except Exception:
-            invalid.append(f"{key} (invalid {typ}: {v})")
+        if val is not None:
+            v = str(val).strip()
+            if v == '':
+                invalid.append(f"{key} (empty)")
+                continue
+            try:
+                if typ == 'int':
+                    int(v)
+                elif typ == 'float':
+                    float(v)
+                elif typ == 'bool':
+                    if v not in ('0', '1', 'true', 'false', 'True', 'False'):
+                        invalid.append(f"{key} (invalid bool: {v})")
+                elif typ == 'str':
+                    pass
+            except Exception:
+                invalid.append(f"{key} (invalid {typ}: {v})")
     if missing or invalid:
         lines = []
         if missing:
