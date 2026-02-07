@@ -868,6 +868,37 @@ STAGE_3
         self.save_all()
         if read_merged_key('FIRE_MODE') == 'N':
             update_env(IMAGINE_ENV, 'FIRE_MODE', 'Y')
+            # --- NEW: Stack all windows to center (configurable via offsets) ---
+            try:
+                output = subprocess.check_output(['xdotool', 'getdisplaygeometry']).decode().strip()
+                sw, sh = map(int, output.split())
+            except Exception:
+                sw, sh = 1920, 1080
+            target_width = int(read_merged_key('DEFAULT_WIDTH'))
+            target_height = int(read_merged_key('DEFAULT_HEIGHT'))
+            center_x = (sw - target_width) // 2
+            center_y = (sh - target_height) // 2
+            offset_x_val = read_merged_key('FIRE_STACK_X_OFFSET')
+            offset_x = int(offset_x_val) if offset_x_val is not None else 0
+            offset_y_val = read_merged_key('FIRE_STACK_Y_OFFSET')
+            offset_y = int(offset_y_val) if offset_y_val is not None else 0
+            stack_x = center_x + offset_x
+            stack_y = center_y + offset_y
+            live_windows_file = read_merged_key('WINDOW_LIST')
+            if live_windows_file:
+                live_windows_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), live_windows_file) if not os.path.isabs(live_windows_file) else live_windows_file
+                if os.path.exists(live_windows_file):
+                    with open(live_windows_file, 'r', encoding='utf-8') as f:
+                        window_ids = [line.strip() for line in f if line.strip()]
+                    if window_ids:
+                        # Single chained size + move per window
+                        for wid in window_ids:
+                            subprocess.run([
+                                'xdotool',
+                                'windowsize', '--sync', wid, str(target_width), str(target_height),
+                                'windowmove', wid, str(stack_x), str(stack_y)
+                            ], capture_output=True)
+            # --- END NEW ---
             self.daemon_thread = threading.Thread(target=self.daemon_thread_func, daemon=True)
             self.daemon_thread.start()
             self.update_fire_button()
@@ -1140,6 +1171,8 @@ STAGE_3
         shot_delay_val = read_merged_key('SHOT_DELAY')
         shot_delay = float(shot_delay_val) if shot_delay_val else 0.0
         single_xdotool = read_merged_key('SINGLE_XDOTOOL') in ('Y', '1', 'true', 'True')
+        debug = int(read_merged_key('DEBUG_DAEMON_ECHO') or 0)
+
         # Prompt fetched once at start
         start, end = self.prompt_buffer.get_bounds()
         prompt = self.prompt_buffer.get_text(start, end, False).strip()
@@ -1150,22 +1183,17 @@ STAGE_3
         prompt_x_from_left = read_merged_key('PROMPT_X_FROM_LEFT') or '50%'
         prompt_y_from_bottom = read_merged_key('PROMPT_Y_FROM_BOTTOM') or '10%'
 
-        self.gentle_target_op('activate', sync=True)
+        if '%' in prompt_x_from_left:
+            click_x = int(target_width * int(prompt_x_from_left.rstrip('%')) / 100)
+        else:
+            click_x = int(prompt_x_from_left)
+        if '%' in prompt_y_from_bottom:
+            pixels_from_bottom = int(target_height * int(prompt_y_from_bottom.rstrip('%')) / 100)
+        else:
+            pixels_from_bottom = int(prompt_y_from_bottom)
+        click_y = target_height - pixels_from_bottom
 
-        def _parse_shell_output(text):
-            d = {}
-            for line in text.splitlines():
-                line = line.strip()
-                if not line:
-                    continue
-                if '=' in line:
-                    k, v = line.split('=', 1)
-                elif ':' in line:
-                    k, v = line.split(':', 1)
-                else:
-                    continue
-                d[k.strip().upper()] = v.strip()
-            return d
+        #self.gentle_target_op('activate', sync=True)
 
         def update_status(text):
             GLib.idle_add(lambda: self.status_label.set_text(text) or False)
@@ -1293,12 +1321,11 @@ STAGE_3
                     msg = f"Unexpected error processing window {wid}:\n\n{e}"
                     subprocess.call(['gxmessage', msg, '-title', 'Daemon Error', '-center', '-buttons', 'OK:0'])
 
-                time.sleep(inter_window_delay)
-
         update_status(f"Done — {total_shots} shots fired")
         update_env(IMAGINE_ENV, 'FIRE_MODE', 'N')
         GLib.idle_add(self.update_fire_button)
         GLib.timeout_add(5000, lambda: self.status_label.set_text("Ready") or False)
+        GLib.idle_add(lambda: self.grid_windows(int(read_merged_key('STAGE_COUNT'))) or False)
 
 if __name__ == '__main__':
     # Enforce strict validation: fail loudly and immediately.
