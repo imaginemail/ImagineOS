@@ -20,7 +20,7 @@ BLANK_PROMPT=0
 # =============================================================================
 # TARGET WINDOW SETTINGS
 # =============================================================================
-WINDOW_PATTERNS='Untitled,Make your own,Imagine - Grok'
+WINDOW_PATTERNS='Untitled,Make your own,Imagine - Grok,Grok'
 TARGET_PATTERN='Imagine - Grok'
 WINDOW_PATTERN='Imagine - Grok'
 WINDOW_LIST='live_windows.txt'
