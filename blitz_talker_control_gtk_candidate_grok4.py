@@ -959,6 +959,70 @@ class BlitzControl(Gtk.Box):
                     log_debug("GENTLE ACTIVATE", f"WID {wid} | CMD: {act_str}")
                 subprocess.run(act_cmd, capture_output=True, text=True)
 
+                # Capture configuration
+                gxi_dir = read_merged_key('TARGET_DIR')
+                if not gxi_dir:
+                    gxi_dir = '.imagine_targets'
+                gxi_dir = os.path.expanduser(gxi_dir)
+                os.makedirs(gxi_dir, exist_ok=True)
+
+                capture_mode = int(read_merged_key('CAPTURE_ENABLED') or '0')
+                capture_tool = read_merged_key('CAPTURE_TOOL') or 'maim'
+
+                capture_x_from_left_str = read_merged_key('CAPTURE_X_FROM_LEFT') or '50%'
+                capture_y_from_bottom_str = read_merged_key('CAPTURE_Y_FROM_BOTTOM') or '10%'
+                capture_ratio_str = read_merged_key('CAPTURE_RATIO') or '50%'
+                if '%' in capture_x_from_left_str:
+                    capture_left_edge = int(target_width * int(capture_x_from_left_str.rstrip('%')) / 100)
+                else:
+                    capture_left_edge = int(capture_x_from_left_str)
+                if '%' in capture_y_from_bottom_str:
+                    capture_bottom_edge = int(target_height * int(capture_y_from_bottom_str.rstrip('%')) / 100)
+                else:
+                    capture_bottom_edge = int(capture_y_from_bottom_str)
+                if '%' in capture_ratio_str:
+                    capture_ratio = float(capture_ratio_str.rstrip('%')) / 100
+                else:
+                    capture_ratio = float(capture_ratio_str)
+                capture_ratio = max(0.1, min(1.0, capture_ratio))
+
+                capture_side = int(target_width * capture_ratio)
+                rect_x = capture_left_edge
+                rect_y = target_height - capture_bottom_edge - capture_side
+                rect_geometry = f"{capture_side}x{capture_side}+{rect_x}+{rect_y}"
+
+                # Capture per window
+                if capture_mode > 0:
+                    cycle_idx = idx - 1
+                    cycle_url = urls[cycle_idx % len(urls)]
+                    log_debug("CAPTURE CYCLE", f"Window idx {idx} | Cycle idx {cycle_idx % len(urls)} | URL: {cycle_url}")
+
+                    safe_name = urllib.parse.quote(cycle_url, safe='')
+                    capture_path = os.path.join(gxi_dir, f"{safe_name}.png")
+
+                    if cycle_url in captured_urls:
+                        log_debug("CAPTURE SKIP", f"Already captured this run for URL {cycle_url}")
+                    else:
+                        do_capture = capture_mode == 2 or (capture_mode == 1 and not os.path.exists(capture_path))
+                        if do_capture:
+                            if capture_tool == 'maim':
+                                cmd = ['maim', '--hidecursor', '-g', rect_geometry, '-i', str(wid), capture_path]
+                            elif capture_tool == 'import':
+                                cmd = ['import', '-window', str(wid), '-crop', f"{capture_side}x{capture_side}+{rect_x}+{rect_y}", capture_path]
+                            elif capture_tool == 'scrot':
+                                cmd = ['scrot', '-a', f"{rect_x},{rect_y},{capture_side},{capture_side}", '-u', capture_path]
+                            else:
+                                cmd = ['maim', '--hidecursor', '-g', rect_geometry, '-i', str(wid), capture_path]
+
+                            cmd_str = ' '.join(shlex.quote(p) for p in cmd)
+                            log_debug("CAPTURE EXEC", f"Path: {capture_path} | CMD: {cmd_str}")
+                            subprocess.run(cmd, capture_output=True)
+                            print("CAPTURED thumbnail to", capture_path)
+                            GLib.idle_add(self.parent_app.editor.refresh_targets)
+                            captured_urls.add(cycle_url)
+                        else:
+                            log_debug("CAPTURE SKIP", f"Mode 1 - exists: {capture_path}")
+
             elif op_type == 'kill':
                 hex_wid = f"0x{int(wid):08x}"
                 close_cmd = ['wmctrl', '-i', '-c', hex_wid]
@@ -1004,38 +1068,6 @@ class BlitzControl(Gtk.Box):
         else:
             pixels_from_bottom = int(prompt_y_from_bottom)
         relative_y = target_height - pixels_from_bottom
-
-        # Capture configuration
-        gxi_dir = read_merged_key('TARGET_DIR')
-        if not gxi_dir:
-            gxi_dir = '.imagine_targets'
-        gxi_dir = os.path.expanduser(gxi_dir)
-        os.makedirs(gxi_dir, exist_ok=True)
-
-        capture_mode = int(read_merged_key('CAPTURE_ENABLED') or '0')
-        capture_tool = read_merged_key('CAPTURE_TOOL') or 'maim'
-
-        capture_x_from_left_str = read_merged_key('CAPTURE_X_FROM_LEFT') or '50%'
-        capture_y_from_bottom_str = read_merged_key('CAPTURE_Y_FROM_BOTTOM') or '10%'
-        capture_ratio_str = read_merged_key('CAPTURE_RATIO') or '50%'
-        if '%' in capture_x_from_left_str:
-            capture_left_edge = int(target_width * int(capture_x_from_left_str.rstrip('%')) / 100)
-        else:
-            capture_left_edge = int(capture_x_from_left_str)
-        if '%' in capture_y_from_bottom_str:
-            capture_bottom_edge = int(target_height * int(capture_y_from_bottom_str.rstrip('%')) / 100)
-        else:
-            capture_bottom_edge = int(capture_y_from_bottom_str)
-        if '%' in capture_ratio_str:
-            capture_ratio = float(capture_ratio_str.rstrip('%')) / 100
-        else:
-            capture_ratio = float(capture_ratio_str)
-        capture_ratio = max(0.1, min(1.0, capture_ratio))
-
-        capture_side = int(target_width * capture_ratio)
-        rect_x = capture_left_edge
-        rect_y = target_height - capture_bottom_edge - capture_side
-        rect_geometry = f"{capture_side}x{capture_side}+{rect_x}+{rect_y}"
 
         # Stack position (from on_fire)
         try:
