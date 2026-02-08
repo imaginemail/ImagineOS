@@ -1148,38 +1148,6 @@ class BlitzControl(Gtk.Box):
                     # Single left click to raise/focus window
                     subprocess.run(['xdotool', 'click', '--clearmodifiers', '--window', str(wid), '1'], capture_output=True)
 
-                    # Capture per window
-                    if capture_mode > 0:
-                        cycle_idx = idx - 1
-                        cycle_url = urls[cycle_idx % len(urls)]
-                        log_debug("CAPTURE CYCLE", f"Window idx {idx} | Cycle idx {cycle_idx % len(urls)} | URL: {cycle_url}")
-
-                        safe_name = urllib.parse.quote(cycle_url, safe='')
-                        capture_path = os.path.join(gxi_dir, f"{safe_name}.png")
-
-                        if cycle_url in captured_urls:
-                            log_debug("CAPTURE SKIP", f"Already captured this run for URL {cycle_url}")
-                        else:
-                            do_capture = capture_mode == 2 or (capture_mode == 1 and not os.path.exists(capture_path))
-                            if do_capture:
-                                if capture_tool == 'maim':
-                                    cmd = ['maim', '--hidecursor', '-g', rect_geometry, '-i', str(wid), capture_path]
-                                elif capture_tool == 'import':
-                                    cmd = ['import', '-window', str(wid), '-crop', f"{capture_side}x{capture_side}+{rect_x}+{rect_y}", capture_path]
-                                elif capture_tool == 'scrot':
-                                    cmd = ['scrot', '-a', f"{rect_x},{rect_y},{capture_side},{capture_side}", '-u', capture_path]
-                                else:
-                                    cmd = ['maim', '--hidecursor', '-g', rect_geometry, '-i', str(wid), capture_path]
-
-                                cmd_str = ' '.join(shlex.quote(p) for p in cmd)
-                                log_debug("CAPTURE EXEC", f"Path: {capture_path} | CMD: {cmd_str}")
-                                subprocess.run(cmd, capture_output=True)
-                                print("CAPTURED thumbnail to", capture_path)
-                                GLib.idle_add(self.parent_app.editor.refresh_targets)
-                                captured_urls.add(cycle_url)
-                            else:
-                                log_debug("CAPTURE SKIP", f"Mode 1 - exists: {capture_path}")
-
                     # Interaction
                     if not is_harvest_only:
                         log_debug("INTERACTION START", "Custom prompt - proceeding")
