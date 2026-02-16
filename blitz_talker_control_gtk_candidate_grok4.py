@@ -492,6 +492,7 @@ class BlitzControl(Gtk.Box):
         self.current_histories = {}
         self.updating_merged = False
         self.system_override_enabled = False
+        self.debug_checks = []
         update_env(IMAGINE_ENV, 'FIRE_MODE', 'N')
 
         main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
@@ -664,48 +665,113 @@ class BlitzControl(Gtk.Box):
             key_label.set_xalign(0)
             key_label.get_style_context().add_class("key-label")
             env_grid.attach(key_label, 0, row, 1, 1)
-            columns = [
-                ("system", self.system_env.get(key, ''), True),
-                ("imagine", self.imagine_env.get(key, ''), False),
-                ("user", self.user_env.get(key, ''), False),
-                ("merged", self.user_env.get(key) or self.imagine_env.get(key) or self.system_env.get(key, ''), False),
-            ]
-            for col_idx, (col_name, val, readonly) in enumerate(columns, start=1):
-                frame = Gtk.Frame()
-                frame.get_style_context().add_class(f"{col_name}-column")
-                frame.set_border_width(4)
-                if key in self.int_keys:
-                    init_val = safe_int(val)
-                    adj = Gtk.Adjustment(value=init_val, lower=0, upper=999999, step_increment=1)
-                    widget = Gtk.SpinButton(adjustment=adj, climb_rate=0.0, digits=0)
-                elif key in self.float_keys:
-                    init_val = safe_float(val)
-                    adj = Gtk.Adjustment(value=init_val, lower=0.0, upper=999.0, step_increment=0.1)
-                    widget = Gtk.SpinButton(adjustment=adj, climb_rate=0.0, digits=2)
-                elif key in self.bool_keys:
-                    widget = Gtk.CheckButton()
-                    active = str(val).lower() in ('1', 'y', 'true', 'yes', 'on')
-                    widget.set_active(active)
-                else:
-                    widget = Gtk.TextView()
-                    widget.set_wrap_mode(Gtk.WrapMode.WORD)
-                    buffer = widget.get_buffer()
-                    buffer.set_text(val)
-                if isinstance(widget, (Gtk.SpinButton, Gtk.CheckButton)):
-                    widget.set_sensitive(not readonly)
-                else:
-                    widget.set_editable(not readonly)
-                frame.add(widget)
-                env_grid.attach(frame, col_idx, row, 1, 1)
-                self.value_widgets[key][col_name] = widget
-                if isinstance(widget, Gtk.SpinButton):
-                    widget.connect("value-changed", self.on_value_changed, key, col_name)
-                elif isinstance(widget, Gtk.CheckButton):
-                    widget.connect("toggled", self.on_value_changed, key, col_name)
-                elif isinstance(widget, Gtk.TextView):
-                    buffer = widget.get_buffer()
-                    buffer.connect("changed", self.on_value_changed, key, col_name)
+
+            if key == 'DEBUG_CATEGORIES':
+                categories = ['file', 'window', 'input', 'daemon', 'gui', 'init', 'geom']
+                cap_labels = ['FILE', 'WINDOW', 'INPUT', 'DAEMON', 'GUI', 'INIT', 'GEOM']
+
+                # system column
+                system_val = self.system_env.get(key, '')
+                system_widget = Gtk.TextView()
+                system_widget.get_buffer().set_text(system_val)
+                system_widget.set_editable(False)
+                system_frame = Gtk.Frame()
+                system_frame.add(system_widget)
+                env_grid.attach(system_frame, 1, row, 1, 1)
+                self.value_widgets[key]['system'] = system_widget
+
+                # imagine column
+                imagine_val = self.imagine_env.get(key, '')
+                imagine_widget = Gtk.TextView()
+                imagine_widget.get_buffer().set_text(imagine_val)
+                imagine_widget.set_editable(False)
+                imagine_frame = Gtk.Frame()
+                imagine_frame.add(imagine_widget)
+                env_grid.attach(imagine_frame, 2, row, 1, 1)
+                self.value_widgets[key]['imagine'] = imagine_widget
+
+                # user column: checkboxes in 2-row grid (4 + 3)
+                user_grid = Gtk.Grid()
+                user_grid.set_column_spacing(12)
+                user_grid.set_row_spacing(4)
+                user_grid.set_column_homogeneous(True)
+                user_val = self.user_env.get(key, '')
+                user_cats = [c.strip().lower() for c in user_val.split(',') if c.strip()]
+                if 'off' in user_cats:
+                    user_cats = []
+                for idx, (cap, lower) in enumerate(zip(cap_labels, categories)):
+                    check = Gtk.CheckButton(label=cap)
+                    check.set_active(lower in user_cats)
+                    check.connect("toggled", self.on_debug_check_toggled, key)
+                    row_idx = 0 if idx < 4 else 1
+                    col_idx = idx % 4
+                    user_grid.attach(check, col_idx, row_idx, 1, 1)
+                    self.debug_checks.append(check)
+                user_frame = Gtk.Frame()
+                user_frame.add(user_grid)
+                env_grid.attach(user_frame, 3, row, 1, 1)
+
+                # hidden TextView for actual user value
+                hidden_user = Gtk.TextView()
+                hidden_user.get_buffer().set_text(user_val)
+                hidden_user.set_visible(False)
+                self.value_widgets[key]['user'] = hidden_user
+
+                # merged column
+                merged_val = user_val or imagine_val or system_val
+                merged_widget = Gtk.TextView()
+                merged_widget.get_buffer().set_text(merged_val)
+                merged_widget.set_editable(False)
+                merged_frame = Gtk.Frame()
+                merged_frame.add(merged_widget)
+                env_grid.attach(merged_frame, 4, row, 1, 1)
+                self.value_widgets[key]['merged'] = merged_widget
+
+            else:
+                columns = [
+                    ("system", self.system_env.get(key, ''), True),
+                    ("imagine", self.imagine_env.get(key, ''), False),
+                    ("user", self.user_env.get(key, ''), False),
+                    ("merged", self.user_env.get(key) or self.imagine_env.get(key) or self.system_env.get(key, ''), False),
+                ]
+                for col_idx, (col_name, val, readonly) in enumerate(columns, start=1):
+                    frame = Gtk.Frame()
+                    frame.get_style_context().add_class(f"{col_name}-column")
+                    frame.set_border_width(4)
+                    if key in self.int_keys:
+                        init_val = safe_int(val)
+                        adj = Gtk.Adjustment(value=init_val, lower=0, upper=999999, step_increment=1)
+                        widget = Gtk.SpinButton(adjustment=adj, climb_rate=0.0, digits=0)
+                    elif key in self.float_keys:
+                        init_val = safe_float(val)
+                        adj = Gtk.Adjustment(value=init_val, lower=0.0, upper=999.0, step_increment=0.1)
+                        widget = Gtk.SpinButton(adjustment=adj, climb_rate=0.0, digits=2)
+                    elif key in self.bool_keys:
+                        widget = Gtk.CheckButton()
+                        active = str(val).lower() in ('1', 'y', 'true', 'yes', 'on')
+                        widget.set_active(active)
+                    else:
+                        widget = Gtk.TextView()
+                        widget.set_wrap_mode(Gtk.WrapMode.WORD)
+                        buffer = widget.get_buffer()
+                        buffer.set_text(val)
+                    if isinstance(widget, (Gtk.SpinButton, Gtk.CheckButton)):
+                        widget.set_sensitive(not readonly)
+                    else:
+                        widget.set_editable(not readonly)
+                    frame.add(widget)
+                    env_grid.attach(frame, col_idx, row, 1, 1)
+                    self.value_widgets[key][col_name] = widget
+                    if isinstance(widget, Gtk.SpinButton):
+                        widget.connect("value-changed", self.on_value_changed, key, col_name)
+                    elif isinstance(widget, Gtk.CheckButton):
+                        widget.connect("toggled", self.on_value_changed, key, col_name)
+                    elif isinstance(widget, Gtk.TextView):
+                        buffer = widget.get_buffer()
+                        buffer.connect("changed", self.on_value_changed, key, col_name)
+
             row += 1
+
         override_check = Gtk.CheckButton(label="Enable editing .system_env values (auto saves overrides to .user_env on change)")
         override_check.connect("toggled", self.on_system_override_toggled)
         env_grid.attach(override_check, 0, row, 5, 1)
@@ -1208,6 +1274,14 @@ class BlitzControl(Gtk.Box):
 
         if changed:
             prune_user_env()
+
+    def on_debug_check_toggled(self, widget, key):
+        categories = ['file', 'window', 'input', 'daemon', 'gui', 'init', 'geom']
+        checked = [categories[i] for i, c in enumerate(self.debug_checks) if c.get_active()]
+        new_val = ','.join(checked)
+        buffer = self.value_widgets[key]['user'].get_buffer()
+        buffer.set_text(new_val)
+        self.recompute_merged(key)
 
     def select_all_active(self, widget):
         for check in self.active_checks.values():
